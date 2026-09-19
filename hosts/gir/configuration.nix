@@ -1,7 +1,7 @@
 # Boot skeleton only (ticket 12): enough to prove evaluation, cache hits for
 # the kernel, ZFS and k3s, and to measure the kernel+initrd pair on the ESP.
 # Services are ported by later tickets.
-{ pkgs, nixpkgs-k3s-1344, ... }:
+{ pkgs, ... }:
 
 {
   networking.hostName = "gir";
@@ -45,10 +45,10 @@
     options = [ "umask=0077" ];
   };
 
-  # Ticket 03's candidate; ticket 13 decides the mechanism.
+  # Ticket 13: pinned via the flake's k3s-pin overlay; k3s-guard.nix enforces it.
   services.k3s = {
     enable = true;
-    package = nixpkgs-k3s-1344.legacyPackages.${pkgs.stdenv.hostPlatform.system}.k3s_1_34;
+    package = pkgs.k3s_1_34_4;
   };
 
   system.stateVersion = "26.05";

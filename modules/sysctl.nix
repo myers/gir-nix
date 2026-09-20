@@ -177,5 +177,32 @@
     # default of 10000 pages (~39 MB) is the reason ARC cannot give memory back
     # fast enough during a burst. 0 removes the throttle.
     options zfs zfs_arc_shrinker_limit=0
+
+    # Ceiling on dnodes held inside ARC, as a percent of zfs_arc_max. The
+    # default 10 gives 2.40 GiB here and this host runs above that (171+ mounted
+    # datasets, ~117 pods, Plex, PostgreSQL: ~3.4 GiB of dnodes), so at 10 the
+    # `dn > arc_dnode_limit` prune trigger in arc_evict() is permanently true.
+    # 25 gives a 6 GiB ceiling and takes that trigger out of play.
+    #
+    # It does NOT stop arc_prune on its own, and an earlier version of this
+    # comment was wrong to say it did (the "85% -> 2%" reading was a lull).
+    # arc_evict() has a second, independent trigger -- non-evictable metadata
+    # above 3/4 of the adaptive metadata target -- and that is the one that
+    # fires here. Nor are the inodes pinned by open files: ~95% of the dentries
+    # are unused. They survive because `zfs_prune()` calls the superblock
+    # shrinker with no memcg, which reaches only the root memcg, and on this host
+    # they are charged to k3s.service. One `echo 2 > drop_caches` silenced
+    # arc_prune instantly and the cache refilled within two minutes.
+    #
+    # The source of the refill, and the real control, is outside ZFS: containerd
+    # re-walks every Active overlayfs snapshot, and BuildKit's cache lives in
+    # k3s's snapshotter by design. See ~/p/gir/docs/adr/
+    # 0001-buildkit-shares-k3s-containerd.md. No ZFS or VM tunable fixes that;
+    # vm.vfs_cache_pressure in particular does nothing while memory is free.
+    #
+    # This is a ceiling on metadata *within* ARC, not a change to the 24 GiB
+    # total, so it does not reopen the sizing the 2026-09-16 bank10 metadata
+    # stall settled.
+    options zfs zfs_arc_dnode_limit_percent=25
   '';
 }

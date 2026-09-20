@@ -78,8 +78,14 @@ in
     };
 
     # ---- k3s ----------------------------------------------------------------
+    # Ticket 09: NixOS boots a CLONE of the k3s datastore, never Ubuntu's original, so
+    # rollback is "boot Ubuntu" with no restore step and nothing to undo. Window B's
+    # quiesce script snapshots rpool/srv/k3s@pre-windowB and clones it to this name
+    # BEFORE the BootNext — if the clone is missing this mount fails and k3s fails
+    # closed with it, which is the intended behaviour, not a bug.
+    # After a clean soak: `zfs promote rpool/srv/k3s-nixos`, then retire the original.
     "/var/lib/rancher/k3s" = {
-      device = "rpool/srv/k3s";
+      device = "rpool/srv/k3s-nixos";
       fsType = "zfs";
       options = zfsOpts;
     };

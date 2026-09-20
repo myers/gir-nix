@@ -2,7 +2,7 @@
 # modules are ticket 24's port. Each module owns one area and nothing else:
 # storage.nix owns every fileSystems entry outside this file, users.nix owns the
 # accounts, and the three hand-written units have no upstream NixOS module.
-{ pkgs, ... }:
+{ lib, pkgs, ... }:
 
 {
   imports = [
@@ -70,6 +70,35 @@
   services.k3s = {
     enable = true;
     package = pkgs.k3s_1_34_4;
+  };
+
+  # Window B (ticket 23) boots this entry FIRST: everything that can write to a shared
+  # dataset or bring up 126 pods is off, so the first NixOS boot proves only the things
+  # that must be true before anything else can be trusted — stage-1 mounts, the secrets
+  # dataset, console login, network identity, netconsole and kdump.
+  #
+  # systemd-boot shows it as a separate entry ("NixOS - staged"). It exists because
+  # boot.loader.systemd-boot.editor = false, so kernel params cannot be edited at the
+  # menu. Reboot into the default entry to advance; nothing here persists.
+  specialisation.staged.configuration = {
+    # It differs ONLY in what starts at boot -- not in the configuration itself.
+    # Disabling the services instead (services.k3s.enable = false, etc.) drops their
+    # accounts and ids too, which breaks libvirt.nix's assertion that qemu keeps
+    # Ubuntu's 64055:109, and would mean the staged boot proves a DIFFERENT system
+    # from the one you are about to run. wantedBy = [] keeps every unit, account and
+    # id identical and simply does not pull them into multi-user.target.
+    systemd.services.k3s.wantedBy = lib.mkForce [ ];
+    systemd.services.postgresql.wantedBy = lib.mkForce [ ];
+    systemd.services.plex.wantedBy = lib.mkForce [ ];
+    systemd.services.samba-smbd.wantedBy = lib.mkForce [ ];
+    systemd.services.samba-nmbd.wantedBy = lib.mkForce [ ];
+    systemd.services.libvirtd.wantedBy = lib.mkForce [ ];
+    # libvirtd is socket-activated, so the sockets have to go too or the first
+    # virsh call starts it anyway.
+    systemd.sockets.libvirtd.wantedBy = lib.mkForce [ ];
+    systemd.sockets.libvirtd-ro.wantedBy = lib.mkForce [ ];
+    systemd.sockets.libvirtd-admin.wantedBy = lib.mkForce [ ];
+    systemd.services.coding-hive-net.wantedBy = lib.mkForce [ ];
   };
 
   system.stateVersion = "26.05";

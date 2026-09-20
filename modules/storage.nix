@@ -249,15 +249,6 @@ in
       options = zvolOpts;
     };
 
-    # Root podman's GraphRoot: image layers *and* libpod's container database.
-    # Ubuntu's fstab has no zvol ordering on this one; ticket 24 adds it, because it
-    # is the same ext4-on-zvol shape as dropbox.
-    "/var/lib/containers/storage" = {
-      device = "/dev/zvol/rpool/srv/podman";
-      fsType = "ext4";
-      options = zvolOpts ++ [ "errors=remount-ro" ];
-    };
-
     # ---- the containerd binds Ubuntu's fstab carries ------------------------
     # "needed for buildkit?" in Ubuntu's fstab. The source is the containerd-fs
     # mount, which exists at boot, so this one is an ordinary ordered bind.
@@ -377,13 +368,6 @@ in
 
     (lib.mkIf config.services.smartd.enable {
       smartd = mountsFor [ "/var/lib/smartmontools" ];
-    })
-
-    (lib.mkIf config.virtualisation.podman.enable {
-      # Both units ship with the podman package via systemd.packages, so NixOS
-      # writes these as drop-ins (overrideStrategy defaults to asDropinIfExists).
-      podman = mountsFor [ "/var/lib/containers/storage" ];
-      podman-restart = mountsFor [ "/var/lib/containers/storage" ];
     })
 
     # Closed by modules/nut.nix, which names these two units. They set the same

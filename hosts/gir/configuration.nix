@@ -72,6 +72,57 @@
     package = pkgs.k3s_1_34_4;
   };
 
+  # Ticket 01 §1.2: Ubuntu ran `k3s server` with ZERO CLI flags -- /etc/rancher/k3s/
+  # config.yaml (271 B) was the entire configuration surface, and it did not come
+  # across. k3s reads this path by default, so writing the files is the whole port;
+  # no extraFlags are needed.
+  #
+  # What its absence cost on the first NixOS boot (2026-09-20), all of it live:
+  #   * node-ip     -- eno1 carries BOTH 192.168.42.8 and 192.168.69.1, and k3s chose
+  #                    192.168.69.1 for the node InternalIP. Ubuntu pinned .42.8.
+  #   * max-pods    -- fell back to the kubelet default of 110 with 119 pods already
+  #                    scheduled on the node, so the node was over its own capacity.
+  #   * disable     -- k3s redeployed its bundled traefik into kube-system, which
+  #                    crash-looped on missing CRDs. The real traefik is Flux-managed
+  #                    in the `traefik` namespace and was running the whole time.
+  #   * audit-*     -- kube-apiserver audit logging silently stopped.
+  environment.etc."rancher/k3s/config.yaml" = {
+    mode = "0600";
+    text = ''
+      node-ip: 192.168.42.8
+      disable:
+        - traefik
+      kubelet-arg:
+        - "max-pods=250"
+      kube-apiserver-arg:
+        - audit-policy-file=/etc/rancher/k3s/audit-policy.yaml
+        - audit-log-path=/var/log/k3s-audit.log
+        - audit-log-maxage=30
+        - audit-log-maxbackup=10
+        - audit-log-maxsize=100
+    '';
+  };
+
+  # Referenced by the audit-policy-file arg above. The apiserver will not start if it
+  # is missing, so it is inlined here rather than carried as a file to copy.
+  # Verbatim from Ubuntu (219 B, sha256:2e3137df...c08a96).
+  environment.etc."rancher/k3s/audit-policy.yaml" = {
+    mode = "0600";
+    text = ''
+      apiVersion: audit.k8s.io/v1
+      kind: Policy
+      omitStages:
+        - RequestReceived
+      rules:
+        - level: Metadata
+          verbs: ["create", "update", "delete"]
+          resources:
+            - group: ""
+              resources: ["pods"]
+        - level: None
+    '';
+  };
+
   # k3s reads /proc/net/route once at startup and exits fatally if there is no default
   # route. On the first NixOS boot (2026-09-20 12:42) libvirt attached macvtap0 to eno1
   # while k3s was starting; the attach bounces the 10G link's carrier, systemd-networkd

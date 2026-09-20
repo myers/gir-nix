@@ -472,6 +472,15 @@ in
   ids.gids.nut = 135;
 
   users.groups.nut.gid = config.ids.gids.nut;
+
+  # nixpkgs builds NUT with `--with-group=nutmon` and ships USB rules that set
+  # GROUP="nutmon". This module runs everything as `nut` (or root), so nothing
+  # needs the group to have members -- but udev resolves GROUP= at rule-parse
+  # time and logs an error per line when it cannot. On the first NixOS boot
+  # (2026-09-20) that was 3640 error-level lines from 62-nut-usbups.rules, which
+  # buried every other failure in `journalctl -p err`. Declaring it empty costs
+  # one gid and silences all of them. See the resolved TODO at the end of this file.
+  users.groups.nutmon = { };
   users.users.nut = {
     uid = config.ids.uids.nut;
     group = "nut";
@@ -899,13 +908,12 @@ in
   # ticket 05 says the Postfix port must "fix the root alias". Until it does,
   # the `.prom` metrics are the only notification that actually arrives.
   #
-  # TODO(collect): nixpkgs builds NUT with `--with-user=nutmon
-  # --with-group=nutmon`, and `services.udev.packages` installs its USB rules,
-  # which set GROUP to that build-time group. This module creates `nut`, not
-  # `nutmon`, so udev may log an unknown-group warning for the CyberPower node.
-  # It is cosmetic -- the module runs `upsdrvctl -u root` -- but check
-  # `journalctl -u systemd-udevd` on the first boot and, if it is noisy, either
-  # declare an empty `users.groups.nutmon` or ship a replacement rule.
+  # RESOLVED 2026-09-20 (first NixOS boot): the unknown-group warning predicted
+  # here did happen, and it was not quiet -- 3640 error-level lines from
+  # 62-nut-usbups.rules, one per rule, enough to hide every other boot failure
+  # behind it. Taking the first option offered above: `users.groups.nutmon` is
+  # now declared empty near the `nut` account. Function was never affected --
+  # `usbhid-ups` runs as root and `upsc` answered throughout.
   #
   # TODO(collect): NUT is 2.7.4 on Ubuntu and 2.8.4 here. The upgrade is
   # wanted -- the 09-12 analysis recommends "a maintained NUT build using

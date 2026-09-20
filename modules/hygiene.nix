@@ -137,6 +137,12 @@
     nvme-cli
     lm_sensors
     ethtool
+    # boot.loader.efi.canTouchEfiVariables = false, so NixOS never writes NVRAM and
+    # nothing pulls efibootmgr in -- but that setting is exactly why this host edits
+    # its boot entries by hand (ticket 06 put NixOS on ESP #2 without reordering
+    # anything). Without this, `sudo efibootmgr` is "command not found" at the moment
+    # you most need it, which is what happened promoting the BootOrder on 2026-09-20.
+    efibootmgr
     # the cluster is k3s, but helm is not part of services.k3s
     kubernetes-helm
   ];

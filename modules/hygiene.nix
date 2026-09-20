@@ -146,6 +146,10 @@
     efibootmgr
     # the cluster is k3s, but helm is not part of services.k3s
     kubernetes-helm
+    # nor is the Flux CLI, and ~/p/fluxing's `bin/inv flux.reconcile` shells out
+    # to it. nixpkgs 2.9.4 matches the controllers in the cluster (v2.9.4); if
+    # they drift more than a minor apart, `flux check` says so.
+    fluxcd
   ];
 
   ############################################################################

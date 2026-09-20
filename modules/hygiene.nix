@@ -113,6 +113,7 @@
     screen
     # process and I/O inspection
     htop
+    btop
     bottom
     lsof
     ncdu

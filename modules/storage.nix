@@ -430,7 +430,20 @@ in
           "zfs.target"
           "local-fs.target"
         ];
-        before = [ "k3s.service" ];
+        # Anything that reads a path this unit mounts must be ordered after it.
+        # k3s was the original entry; plex and samba were added 2026-09-20 after
+        # the first NixOS boot, where the unit aborted at its gate and plex came
+        # up at 12:42:45 against bare mountpoints while the real datasets did not
+        # mount until 12:52:51. Plex cached "file inaccessible" for every part
+        # under /mmm and kept serving that verdict long after the mounts were
+        # there -- no error, no retry, just clients reporting that the drive is
+        # not mounted. Ordering is cheap; the failure is silent and durable.
+        before = [
+          "k3s.service"
+          "plex.service"
+          "samba-smbd.service"
+          "samba-nmbd.service"
+        ];
         wantedBy = [ "multi-user.target" ];
 
         path = [

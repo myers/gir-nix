@@ -118,16 +118,29 @@ in
       lc_time = "C";
       default_text_search_config = "pg_catalog.english";
 
+      # ssl: CARRIED after all. The survey behind the note below looked for clients
+      # setting DB_SSL or an explicit sslmode and found none -- but it could not have
+      # found ext-postgres-operator, which is Go and uses lib/pq, whose default
+      # sslmode is `require` (libpq's is `prefer`, which silently falls back). It
+      # demands TLS while configuring nothing, so on the first NixOS boot it
+      # crash-looped with `pq: SSL is not enabled on the server` (118 restarts,
+      # 2026-09-20). Debian's snakeoil pair had been covering for it invisibly.
+      #
+      # postgresql-ssl-cert.service below generates the equivalent self-signed pair.
+      # NOT into /etc/gir-secrets, although ticket 07 suggested it: that directory is
+      # 0700 root because it holds the password hashes and the SSH host keys, and the
+      # postgres user cannot traverse it -- postgres died with `could not load server
+      # certificate file: Permission denied` on 2026-09-20 14:13 for exactly that
+      # reason, whatever the mode on the subdirectory. It lives on the postgres data
+      # dataset instead, which postgres owns outright. This is
+      # encryption without authentication, exactly as the snakeoil cert was on
+      # Ubuntu -- no client verifies it, and restoring parity is the point.
+      ssl = true;
+      ssl_cert_file = "/var/lib/postgresql/ssl/server.crt";
+      ssl_key_file = "/var/lib/postgresql/ssl/server.key";
+
       # Deltas from the Ubuntu config, deliberately not carried:
       #
-      #   ssl = on / ssl_cert_file = /etc/ssl/certs/ssl-cert-snakeoil.pem
-      #     Debian's ssl-cert package generates that snakeoil pair; NixOS has no
-      #     equivalent, and enabling ssl without certs makes postgres refuse to
-      #     start. No client was found requiring TLS -- the immich-v2 Deployment
-      #     sets DB_HOSTNAME/DB_USERNAME/DB_PASSWORD/DB_DATABASE_NAME/
-      #     DB_VECTOR_EXTENSION and no DB_SSL / sslmode. If a client does
-      #     require it, generate a pair into /etc/gir-secrets (ticket 07) and
-      #     set ssl/ssl_cert_file/ssl_key_file here.
       #   cluster_name = '18/main', external_pid_file, hba_file, ident_file
       #     Debian multi-cluster plumbing; NixOS owns these paths itself.
       #   shared_buffers/max_wal_size/min_wal_size/dynamic_shared_memory_type
@@ -214,4 +227,67 @@ in
   #   SELECT name, default_version, installed_version
   #     FROM pg_available_extensions
   #    WHERE installed_version IS DISTINCT FROM default_version;
+
+  ############################################################################
+  ## The snakeoil equivalent
+  ##
+  ## Debian's ssl-cert package ships /etc/ssl/certs/ssl-cert-snakeoil.pem and
+  ## regenerates it on install; NixOS has no such package, so the pair is made
+  ## here. It lives under /var/lib/postgresql (rpool/srv/postgresql), which the
+  ## postgres user owns and can traverse -- see the note by ssl_cert_file above
+  ## for why /etc/gir-secrets does not work. Generated once rather than on every
+  ## activation: a new key on each switch would break every pooled connection.
+  ############################################################################
+  systemd.services.postgresql-ssl-cert = {
+    description = "Generate PostgreSQL's self-signed certificate if absent";
+    wantedBy = [ "multi-user.target" ];
+    before = [ "postgresql.service" ];
+    requiredBy = [ "postgresql.service" ];
+    # The pair lives on the postgres data dataset, so it must be mounted first.
+    unitConfig.RequiresMountsFor = [ "/var/lib/postgresql" ];
+    serviceConfig = {
+      Type = "oneshot";
+      RemainAfterExit = true;
+    };
+    path = [ pkgs.openssl pkgs.coreutils ];
+    script = ''
+      set -euo pipefail
+      dir=/var/lib/postgresql/ssl
+      install -d -o postgres -g postgres -m 0700 "$dir"
+
+      if [ -f "$dir/server.crt" ] && [ -f "$dir/server.key" ] \
+         && openssl x509 -in "$dir/server.crt" -noout -checkend 2592000 >/dev/null 2>&1; then
+        echo "certificate present and valid for at least 30 more days"
+        exit 0
+      fi
+
+      echo "generating a self-signed certificate for postgres"
+      openssl req -new -x509 -days 3650 -nodes -text \
+        -subj "/CN=gir" \
+        -addext "subjectAltName=DNS:gir,DNS:localhost,IP:127.0.0.1,IP:192.168.42.8" \
+        -out "$dir/server.crt.new" \
+        -keyout "$dir/server.key.new"
+
+      # postgres refuses to start if the key is group- or world-readable.
+      chown postgres:postgres "$dir/server.crt.new" "$dir/server.key.new"
+      chmod 0644 "$dir/server.crt.new"
+      chmod 0600 "$dir/server.key.new"
+      mv "$dir/server.crt.new" "$dir/server.crt"
+      mv "$dir/server.key.new" "$dir/server.key"
+      echo "wrote $dir/server.crt and $dir/server.key"
+
+      # Writing the files is not the same as postgres being able to READ them:
+      # every directory on the path needs +x for the postgres user, which is how
+      # /etc/gir-secrets (0700 root) broke this on 2026-09-20. Prove it here, so a
+      # bad path fails in this unit instead of in postgres three restarts later.
+      for f in "$dir/server.crt" "$dir/server.key"; do
+        if ! ${pkgs.sudo}/bin/sudo -u postgres test -r "$f"; then
+          echo "FATAL: postgres cannot read $f -- check +x on every parent directory" >&2
+          exit 1
+        fi
+      done
+      echo "verified: the postgres user can read both files"
+    '';
+  };
+
 }

@@ -467,6 +467,15 @@ in
               $1 ~  /^rpool\/USERDATA\// { next }
               $1 == "bpool"              { next }
               $1 ~  /^bpool\//           { next }
+              # The Ubuntu k3s datastore. NixOS mounts a CLONE of it
+              # (rpool/srv/k3s-nixos) on /var/lib/rancher/k3s via fileSystems, so
+              # that the Ubuntu copy stays a clean rollback target. Leaving the
+              # original in the candidate set trips gate 2 on every boot: it is
+              # unmounted, and its mountpoint is already held by the clone.
+              # The clone itself is canmount=noauto, so it never lands here.
+              # (No apostrophes: this awk program is bash single-quoted.)
+              $1 == "rpool/srv/k3s"      { next }
+              $1 ~  /^rpool\/srv\/k3s\//  { next }
                                          { print $1 "\t" $2 "\t" $4 }
             ' | LC_ALL=C sort -t"$TAB" -k2,2 > "$work"
 

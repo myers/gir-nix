@@ -72,6 +72,23 @@
     package = pkgs.k3s_1_34_4;
   };
 
+  # k3s reads /proc/net/route once at startup and exits fatally if there is no default
+  # route. On the first NixOS boot (2026-09-20 12:42) libvirt attached macvtap0 to eno1
+  # while k3s was starting; the attach bounces the 10G link's carrier, systemd-networkd
+  # logged "eno1: DHCP lease lost", and the route was gone for seven seconds. k3s's three
+  # default restarts are immediate, so all three landed inside that window and the unit
+  # died of start-limit-hit with the network perfectly healthy a moment later.
+  #
+  # Ordering k3s after libvirt-guests.service would close this exact race but makes a
+  # hang in guest resume block the cluster. Backing the restarts off instead costs a
+  # slower recovery and fixes the whole class: any transient loss of the default route,
+  # from any cause, is now ridden out rather than fatal. Ten tries at 15s covers ~150s.
+  systemd.services.k3s = {
+    serviceConfig.RestartSec = lib.mkForce "15s";
+    startLimitIntervalSec = 300;
+    startLimitBurst = 10;
+  };
+
   # Window B (ticket 23) boots this entry FIRST: everything that can write to a shared
   # dataset or bring up 126 pods is off, so the first NixOS boot proves only the things
   # that must be true before anything else can be trusted — stage-1 mounts, the secrets

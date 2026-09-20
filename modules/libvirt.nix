@@ -889,8 +889,14 @@ in
       Type = "oneshot";
       RemainAfterExit = true;
       WorkingDirectory = "/home/myers/p/coding-hive";
-      ExecStart = "/home/myers/p/coding-hive/bin/inv vm.boot-setup";
-      ExecStop = "/home/myers/p/coding-hive/bin/inv proxy.stop";
+      # bin/inv is a binstub starting `#!/bin/bash`, and NixOS has no /bin/bash --
+      # only /bin/sh and /usr/bin/env exist. Executing it directly fails with
+      # status=203/EXEC, which is what happened on the first NixOS boot
+      # (2026-09-20 12:42). Invoking bash explicitly leaves the repo untouched and
+      # keeps it working unchanged on Ubuntu; the venv interpreter it then execs is
+      # an absolute path under the shared home and is handled by nix-ld.
+      ExecStart = "${pkgs.bash}/bin/bash /home/myers/p/coding-hive/bin/inv vm.boot-setup";
+      ExecStop = "${pkgs.bash}/bin/bash /home/myers/p/coding-hive/bin/inv proxy.stop";
     };
 
     # A `nixos-rebuild switch` must not bounce the proxy and the port forwards

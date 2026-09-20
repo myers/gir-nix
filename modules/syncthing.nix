@@ -107,6 +107,42 @@ in
     # which would issue a new device ID and break the pairing with minitrouble.
   };
 
+  # Filesystem confinement (2026-09-20, in answer to "is there an advantage to
+  # rootless podman?"). The honest part of that question was isolation: the
+  # nixpkgs module sets a good deal of hardening (MemoryDenyWriteExecute,
+  # PrivateUsers, PrivateDevices, RestrictNamespaces...) but leaves
+  # `ProtectHome=no`, `ProtectSystem=no` and no path allowlist at all. So
+  # Syncthing ran as `myers` with read/write over everything myers owns --
+  # ~/.ssh, ~/p/gir-nix, tokens -- while being an internet-facing daemon: 22000
+  # is open and the peer connects from a public address.
+  #
+  # A rootless container would have confined it to three bind mounts, but at the
+  # cost of subuid-mapped file ownership on /stuff (shared with samba and plex),
+  # a fuse-overlayfs graph root on ZFS, and -- worst -- losing the mount guard
+  # below, because `podman -v /stuff:/stuff` *creates* a missing host path
+  # instead of refusing to start. This gets the same confinement with none of
+  # that, and is tighter than the old container actually was: that one ran under
+  # root-podman (see the project README), so an escape landed as root.
+  #
+  # BindPaths rather than ReadWritePaths for the config tree: ProtectHome=tmpfs
+  # masks /home first, so the path has to be mounted back in, and BindPaths is
+  # read-write by default. /stuff and /srv/videotapes sit outside /home, so they
+  # only need the ProtectSystem=strict exemption.
+  #
+  # NOT narrowed here: RestrictAddressFamilies. Syncthing needs AF_INET/INET6
+  # for sync, AF_UNIX, and AF_NETLINK to enumerate interfaces for local
+  # discovery; getting that list wrong breaks discovery quietly rather than
+  # loudly. Separate decision, with its own testing.
+  systemd.services.syncthing.serviceConfig = {
+    ProtectHome = "tmpfs";
+    BindPaths = [ "/home/myers/p/syncthing" ];
+    ProtectSystem = "strict";
+    ReadWritePaths = [
+      "/stuff"
+      "/srv/videotapes"
+    ];
+  };
+
   # Fail-closed on the three ZFS mounts (ticket 07, rule 9). This matters more
   # for Syncthing than for most services: all four folders are `sendreceive`, so
   # if Syncthing started against an unmounted /stuff it would scan an empty

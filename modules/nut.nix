@@ -394,9 +394,18 @@ let
     #
     # grep drops upslog's two-line startup banner, which would otherwise be
     # appended into the CSV on every restart and break any parser.
+    #
+    # -u nut is NOT cosmetic. upslog drops privileges to its compiled-in user,
+    # which nixpkgs sets to `nutmon` (--with-user=nutmon). This module creates
+    # `nutmon` as an empty *group* only -- see section 1 -- so without -u the
+    # binary exits 1 with "OS user nutmon not found" and Restart=always turns
+    # that into a 15-second crash loop. It did exactly that from the first NixOS
+    # boot (2026-09-20 12:42:45) until this was fixed, so the CSV had no rows and
+    # nut-prom's telemetry gap went unnoticed. Running as `nut` is the same
+    # choice section 1 makes for upsmon, and for the same reason.
     set -u
     FMT='%TIME @Y-@m-@dT@H:@M:@S%,%VAR ups.status%,%VAR ups.load%,%VAR battery.charge%,%VAR battery.runtime%,%VAR battery.voltage%,%VAR input.voltage%,%VAR output.voltage%'
-    ${nut}/bin/upslog -l - -s ${upsName}@localhost -i 30 -f "$FMT" \
+    ${nut}/bin/upslog -u nut -l - -s ${upsName}@localhost -i 30 -f "$FMT" \
       | ${pkgs.gnugrep}/bin/grep --line-buffered -vE '^(Network UPS Tools upslog|logging status of)'
   '';
 

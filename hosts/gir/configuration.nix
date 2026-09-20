@@ -1,9 +1,30 @@
-# Boot skeleton only (ticket 12): enough to prove evaluation, cache hits for
-# the kernel, ZFS and k3s, and to measure the kernel+initrd pair on the ESP.
-# Services are ported by later tickets.
+# Host configuration for gir. The boot half is ticket 12's skeleton; the service
+# modules are ticket 24's port. Each module owns one area and nothing else:
+# storage.nix owns every fileSystems entry outside this file, users.nix owns the
+# accounts, and the three hand-written units have no upstream NixOS module.
 { pkgs, ... }:
 
 {
+  imports = [
+    ../../modules/storage.nix
+    ../../modules/users.nix
+    ../../modules/hygiene.nix
+    ../../modules/postgresql.nix
+    ../../modules/plex.nix
+    ../../modules/netconsole.nix
+    ../../modules/kdump.nix
+    ../../modules/ipmievd.nix
+    ../../modules/samba.nix
+    ../../modules/nut.nix
+    ../../modules/ssh.nix
+    ../../modules/libvirt.nix
+    ../../modules/monitoring.nix
+    ../../modules/sanoid.nix
+    ../../modules/sysctl.nix
+    ../../modules/networking.nix
+    ../../modules/zfs-maintenance.nix
+  ];
+
   networking.hostName = "gir";
   networking.hostId = "375d89cc";
 

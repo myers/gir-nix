@@ -140,4 +140,28 @@
     # the cluster is k3s, but helm is not part of services.k3s
     kubernetes-helm
   ];
+
+  ############################################################################
+  ## /bin/bash for the shared Ubuntu home
+  ##
+  ## NixOS ships only /bin/sh and /usr/bin/env. /home/myers comes across from
+  ## Ubuntu unchanged and is full of scripts that start `#!/bin/bash`, and the
+  ## breakage is not limited to shebangs: pyinvoke, which drives the coding-hive
+  ## VM, runs every `c.run()` subprocess through a shell and defaults that shell
+  ## to /bin/bash. On the first NixOS boot (2026-09-20 12:52) that surfaced as
+  ## `FileNotFoundError: [Errno 2] No such file or directory: '/bin/bash'`
+  ## inside tasks.py, after the binstub itself had already been fixed.
+  ##
+  ## This is the same bargain `programs.nix-ld` above already makes: the home is
+  ## Ubuntu's, it must keep working, and paying for that centrally beats
+  ## discovering each caller one failure at a time. `L+` replaces whatever is
+  ## there, so the link is reasserted on every activation.
+  ##
+  ## bashInteractive, not bash: /bin/sh already points into bashInteractive, so
+  ## reusing it keeps one bash in the system closure instead of two.
+  ############################################################################
+  systemd.tmpfiles.rules = [
+    "L+ /bin/bash - - - - ${pkgs.bashInteractive}/bin/bash"
+  ];
+
 }

@@ -24,6 +24,7 @@
     ../../modules/networking.nix
     ../../modules/zfs-maintenance.nix
     ../../modules/syncthing.nix
+    ../../modules/sysstat.nix
   ];
 
   networking.hostName = "gir";

@@ -92,12 +92,13 @@ in
       # VectorChord must be preloaded; nixpkgs' own vectorchord test uses
       # exactly `shared_preload_libraries = 'vchord'`.
       #
-      # TODO(collect): confirm the host's live value, including anything set by
-      # ALTER SYSTEM, which lands in PGDATA (0700, unreadable unprivileged) and
-      # is read *after* postgresql.conf -- it travels with the dataset and would
-      # override this line. Run:
-      #   sudo -u postgres psql -Atc "SHOW shared_preload_libraries"
-      #   sudo cat /var/lib/postgresql/18/main/postgresql.auto.conf
+      # Checked 2026-09-20, closing the TODO that stood here since the port:
+      # /var/lib/postgresql/18/main/postgresql.auto.conf contains exactly one
+      # line, `shared_preload_libraries = 'vchord'` -- the same value set here.
+      # So ALTER SYSTEM is NOT overriding anything in this file. Worth rechecking
+      # if a future setting mysteriously fails to take: auto.conf is read AFTER
+      # postgresql.conf, it travels with the data dataset, and it is 0700 root so
+      # only a sudo read will show it.
       shared_preload_libraries = "vchord";
 
       # Verbatim from /etc/postgresql/18/main/postgresql.conf.
@@ -138,6 +139,39 @@ in
       ssl = true;
       ssl_cert_file = "/var/lib/postgresql/ssl/server.crt";
       ssl_key_file = "/var/lib/postgresql/ssl/server.key";
+
+      ## Memory ------------------------------------------------------------
+      # Nothing memory-related was set here or on Ubuntu, so a 123 GiB host serving
+      # a 176 GB and a 139 GB database ran on stock defaults: shared_buffers 128 MB,
+      # work_mem 4 MB, maintenance_work_mem 64 MB, effective_cache_size 4 GB. The
+      # 2026-09-20 collation rebuild made the cost visible -- every sort spilled.
+      #
+      # All four below are reloadable; none needs a restart.
+
+      # Allocates NOTHING. It is only what the planner BELIEVES is cached, and at
+      # the 4 GB default on a box with a 24 GiB ARC plus page cache the planner
+      # systematically underestimates caching and tips toward sequential scans.
+      # This is the highest-value line here and the only one with no downside.
+      effective_cache_size = "48GB";
+
+      # Index builds, VACUUM, REINDEX. Per maintenance operation, not per backend.
+      maintenance_work_mem = "2GB";
+
+      # MUST be set explicitly. It defaults to -1, meaning "use maintenance_work_mem",
+      # and there are 3 autovacuum workers -- so the line above would otherwise
+      # silently authorise 6 GB of autovacuum. This caps it at 768 MB.
+      autovacuum_work_mem = "256MB";
+
+      # The dangerous one: per sort/hash NODE per CONNECTION, not per query. With
+      # max_connections = 200 and several such nodes in a plan, a large value is
+      # multiplied by both. 32 MB is 8x the default and still bounded at a few GB
+      # in the worst case.
+      work_mem = "32MB";
+
+      # shared_buffers is deliberately LEFT AT THE DEFAULT. On this host every page
+      # it caches is also cached in ARC, so raising it pays for the same data twice
+      # against a deliberately capped 24 GiB ARC -- and unlike the four above it
+      # needs a restart. Let ARC do the caching.
 
       # Deltas from the Ubuntu config, deliberately not carried:
       #

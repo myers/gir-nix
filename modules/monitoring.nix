@@ -755,8 +755,15 @@ in
       "-s /var/lib/smartmontools/smartd."
     ];
 
-    defaults.monitored = "-a -d removable -n standby";
-    defaults.autodetected = "-a -d removable -n standby";
+    # -s S/../../3/02: a short self-test on every drive each Wednesday at
+    # 02:00 (fields are type/month/day-of-month/day-of-week/hour; 3 = Wed).
+    # Ubuntu ran no self-tests at all, so -a only reported what a drive had
+    # already flagged. Decided 2026-09-22: short weekly, no long test. The
+    # slot is clear of the Sunday 00:24 scrubs, the 02:15 updatedb and the
+    # 04:30 NUT self-test. A failed test is a `-l selftest` event, so it mails
+    # like any other failure.
+    defaults.monitored = "-a -d removable -n standby -s S/../../3/02";
+    defaults.autodetected = "-a -d removable -n standby -s S/../../3/02";
 
     notifications = {
       mail = {

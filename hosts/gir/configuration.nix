@@ -26,6 +26,7 @@
     ../../modules/syncthing.nix
     ../../modules/sysstat.nix
     ../../modules/locate.nix
+    ../../modules/postfix.nix
   ];
 
   networking.hostName = "gir";

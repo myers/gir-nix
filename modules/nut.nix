@@ -911,11 +911,14 @@ in
   #   3. Time it: `override.battery.runtime.low = 300` assumes ZFS root + k3s +
   #      libvirt can stop inside five minutes, which has never been measured.
   #
-  # TODO(verify): local mail. `2026-09-12-nut-failure-analysis.md` records that
-  # delivery to a person was never demonstrated -- `/etc/aliases` has only
-  # `postmaster: root`. The helper and the self-test both `mail root`, and
-  # ticket 05 says the Postfix port must "fix the root alias". Until it does,
-  # the `.prom` metrics are the only notification that actually arrives.
+  # RESOLVED 2026-09-22 (ticket 26): local mail. `2026-09-12-nut-failure-analysis.md`
+  # recorded that delivery to a person was never demonstrated -- `/etc/aliases`
+  # had only `postmaster: root`. Ticket 05 added `root: myers@maski.org` on
+  # Ubuntu, but the Postfix port was then missed entirely, so from the 09-20
+  # cutover until 09-22 `mail root` here had no sendmail and the `.prom`
+  # metrics were the only notification that arrived. postfix.nix now carries
+  # the relay and the alias, and a test mail to root was seen leaving for
+  # smtp.gmail.com with 250 OK.
   #
   # RESOLVED 2026-09-20 (first NixOS boot): the unknown-group warning predicted
   # here did happen, and it was not quiet -- 3640 error-level lines from

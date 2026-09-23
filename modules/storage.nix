@@ -302,10 +302,20 @@ in
     '';
   };
 
+  # Swap moved off md0 on 2026-09-22 to the 256 GiB plain partition nvme2n1p2 on
+  # the Samsung 990 PRO (the vmpool drive). Two reasons: the 09-15 panic was the
+  # md-raid1 swap write path itself (raid1_write_request mempool), and 11 GiB
+  # sat >= 99% full for a day after a CI burst on 09-21, leaving reclaim only
+  # file cache and ARC to take (~/p/gir/2026-09-23-gir-swap-assessment.md).
+  # Pods can't swap (kubelet sets memory.swap.max=0), so this holds host
+  # services' cold anon, not CI builds. Trade-off: no mirror; if the 990 PRO
+  # dies, swapped-out processes die with it (vmpool is single-disk there anyway).
+  # md0 still assembles (boot.swraid above) but is unused. To go back, restore:
+  #   device = "/dev/disk/by-uuid/0a70f011-bc24-421f-adba-48cf2e5fe8b6";  # md0
   swapDevices = [
     {
-      # /dev/md0, by the swap signature's UUID — the same one Ubuntu's fstab uses.
-      device = "/dev/disk/by-uuid/0a70f011-bc24-421f-adba-48cf2e5fe8b6";
+      # nvme2n1p2, by its swap signature's UUID.
+      device = "/dev/disk/by-uuid/cf1216f1-b747-44b6-b55d-d1af39688c05";
       # Ubuntu's bare `discard` == `swapon --discard` == both pages and clusters.
       discardPolicy = "both";
     }

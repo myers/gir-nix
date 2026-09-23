@@ -162,6 +162,49 @@ let
     echo "kdump-capture: done, rebooting"
   '';
 
+  # Runs in the crash kernel's initrd (kdump-netconsole below). Only the
+  # initrd's own /bin is used (coreutils, kmod, mount, bash; no grep there):
+  # boot.initrd.systemd.storePaths copies this file but not its closure, so a
+  # store-path PATH would point at nothing.
+  crashNetconsoleScript = pkgs.writeShellScript "kdump-netconsole" ''
+    set -u
+    PATH=/bin
+    MAC=3c:ec:ef:7f:2a:96
+    CFG=/sys/kernel/config/netconsole/misfit-crash
+    log() { echo "kdump-netconsole: $*" > /dev/kmsg; }
+
+    modprobe atlantic || log "modprobe atlantic failed"
+    modprobe configfs 2>/dev/null || true
+    modprobe netconsole || { log "modprobe netconsole failed"; exit 1; }
+    [ -d /sys/kernel/config/netconsole ] \
+      || mount -t configfs none /sys/kernel/config || { log "no configfs"; exit 1; }
+    [ -d /sys/kernel/config/netconsole ] || { log "no netconsole configfs dir"; exit 1; }
+
+    dev=
+    for _ in $(seq 1 20); do
+      for n in /sys/class/net/*; do
+        [ "$(cat "$n/address" 2>/dev/null)" = "$MAC" ] && dev=''${n##*/}
+      done
+      [ -n "$dev" ] && break
+      sleep 1
+    done
+    [ -n "$dev" ] || { log "no interface with $MAC"; exit 1; }
+
+    mkdir -p "$CFG" || exit 1
+    echo "$dev"              > "$CFG/dev_name"
+    echo 192.168.42.8        > "$CFG/local_ip"
+    echo 192.168.42.1        > "$CFG/remote_ip"
+    echo a0:36:9f:fb:67:94   > "$CFG/remote_mac"
+    echo 6666                > "$CFG/local_port"
+    echo 6666                > "$CFG/remote_port"
+    # netpoll brings the link up itself and waits up to carrier_timeout.
+    for _ in 1 2 3; do
+      echo 1 > "$CFG/enabled" 2>/dev/null && break
+      sleep 2
+    done
+    log "armed on $dev (enabled=$(cat "$CFG/enabled")), cmdline: $(cat /proc/cmdline)"
+  '';
+
   # Runs in the normal kernel: arms the crash kernel.
   loadScript = pkgs.writeShellScript "kdump-load" ''
     set -eu
@@ -188,6 +231,14 @@ let
     append="init=$sys/init"
     append="$append nr_cpus=1 reset_devices irqpoll nousb panic=10"
     append="$append zfs.zfs_arc_max=134217728"
+    # Witness for the crash kernel itself (see kdump-netconsole below). The
+    # inherited loglevel=4 would hide everything but warnings; the later
+    # loglevel= wins. devkmsg=on stops /dev/kmsg ratelimiting userspace, and the
+    # two systemd.* flags route PID 1 and every unit's output (makedumpfile,
+    # the pool import) into the kernel log, hence onto netconsole.
+    # carrier_timeout: the Aquantia 10G link needs longer than netpoll's 4 s.
+    append="$append loglevel=7 printk.devkmsg=on netpoll.carrier_timeout=15"
+    append="$append systemd.log_target=kmsg systemd.journald.forward_to_kmsg=1"
     append="$append systemd.unit=kdump-capture.service"
     append="$append rd.systemd.unit=initrd.target"
 
@@ -236,6 +287,43 @@ in
     pathConfig = {
       PathChanged = "/run/current-system";
       Unit = "kdump-load.service";
+    };
+  };
+
+  # ---------------------------------------------------------------------------
+  # Crash-kernel witness: netconsole from stage 1.
+  # ---------------------------------------------------------------------------
+  # 2026-09-23: the crash kernel ran for ~3 min and left nothing — no dump, no
+  # journal, no netconsole — because netconsole.nix arms the target from a
+  # stage-2 unit that the capture boot never starts. This arms the same misfit
+  # target from inside the initrd, only when /proc/vmcore exists, so the pool
+  # import, the switch-root and the capture itself are all on misfit's log.
+  # The configfs target survives switch-root, so stage 2 is covered too.
+  #
+  # Why not `netconsole=` on the command line: the module takes a device *name*,
+  # and in stage 1 udev may or may not have renamed the Aquantia port to eno1
+  # yet. Matching the MAC is race-free. local_ip is given outright because
+  # nothing configures addresses in the initrd (netpoll does not need one on
+  # the interface). Values from netconsole.nix / /sys/kernel/config 2026-09-22.
+  # Cost on a normal boot: atlantic/netconsole/configfs sit in the initrd, and
+  # udev loads atlantic a little earlier than before. Nothing else runs.
+  boot.initrd.availableKernelModules = [ "atlantic" "configfs" "netconsole" ];
+  boot.initrd.systemd.storePaths = [ crashNetconsoleScript ];
+  boot.initrd.systemd.services.kdump-netconsole = {
+    description = "Arm netconsole to misfit in the kdump crash kernel";
+    wantedBy = [ "initrd.target" ];
+    after = [ "systemd-modules-load.service" ];
+    before = [ "zfs-import-rpool.service" "sysroot.mount" ];
+    unitConfig = {
+      DefaultDependencies = false;
+      ConditionPathExists = "/proc/vmcore";
+    };
+    serviceConfig = {
+      Type = "oneshot";
+      RemainAfterExit = true;
+      ExecStart = "${crashNetconsoleScript}";
+      # Never let the witness hold up the dump.
+      TimeoutStartSec = "60s";
     };
   };
 

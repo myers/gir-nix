@@ -16,16 +16,16 @@
 #   * ticket 07 (2026-09-19) -- winship-house boots Secure Boot OVMF, so NixOS
 #     needs an MS-keyed Secure Boot firmware. `/etc/libvirt/secrets` is empty, so
 #     nothing is owed there.
-#   * ticket 11 -- coding-hive's seed ISO is /home/myers/p/coding-hive/cloud-init/seed.iso
-#     on `vmpool/myers/p`, and coding-hive-net.service's WorkingDirectory/ExecStart
-#     are under /home/myers/p/coding-hive. Both are reachable only once that
-#     dataset is mounted.
+#   * ticket 11 -- coding-hive-net.service's WorkingDirectory/ExecStart are under
+#     /home/myers/p/coding-hive, reachable only once `vmpool/myers/p` is mounted.
+#     The VM's own files (seed ISO, console log) moved out of home on 2026-09-22;
+#     see item 12.
 #   * users.nix section "Cross-module UID/GID parity" -- this module owes the
 #     libvirt-qemu 64055 / kvm 109 pin. Decided 2026-09-19: service accounts that
 #     own files on shared datasets keep Ubuntu's NUMERIC ids; nixpkgs' NAMES stay.
 #   * storage.nix -- declares the /var/lib/libvirt mount and libvirtd's
-#     RequiresMountsFor for it. This module adds /home/myers/p to that list;
-#     `unitConfig.RequiresMountsFor` is list-valued, so the two concatenate.
+#     RequiresMountsFor for it. (This module used to add /home/myers/p to that
+#     list; dropped 2026-09-22 with item 12.)
 #
 # Facts below were read on 2026-09-19 from the sudo collection
 # `logs/port-configs-20260919-191439/libvirt/` (both domain XMLs, both network
@@ -101,11 +101,16 @@
 #     The paths are identical on NixOS (ZFS makes them), so they are kept
 #     verbatim -- but they only exist after vmpool is imported, which is why
 #     libvirtd gets a mount dependency here.
-# 12. The CD-ROM and the serial/console log
-#     (/home/myers/p/coding-hive/{cloud-init/seed.iso,logs/console.log}) are on
-#     `vmpool/myers/p`, i.e. inside a home directory. Paths unchanged; the
-#     dependency is handled by RequiresMountsFor on libvirtd and on
-#     coding-hive-net.service.
+# 12. The CD-ROM and the serial/console log were under
+#     /home/myers/p/coding-hive/{cloud-init/seed.iso,logs/console.log} on Ubuntu.
+#     On NixOS /home/myers is 0700, so qemu (qemu-libvirtd) could not traverse to
+#     them and coding-hive failed to start on every NixOS boot ("seed.iso:
+#     Permission denied"). Moved 2026-09-22 to /var/lib/libvirt/coding-hive/ on
+#     the shared rpool/srv/libvirt dataset. The ISO was copied there once by
+#     ~/p/gir/logs/coding-hive-move-vm-files-*.sh, which also re-defined the live
+#     domain with the new paths (domains are seeded only if absent, section 4).
+#     coding-hive's tasks.py still names the home paths, but only for
+#     provisioning a new VM (virt-install), not for this one.
 # 13. Storage pools (`cloud-init`, `coding-hive`, `iso`) are NOT ported -- see
 #     TODO(pools). They are directory pools used by virt-manager/virt-install;
 #     no path in either domain XML resolves through a pool.
@@ -265,7 +270,7 @@ let
         </disk>
         <disk type="file" device="cdrom">
           <driver name="qemu" type="raw"/>
-          <source file="/home/myers/p/coding-hive/cloud-init/seed.iso"/>
+          <source file="/var/lib/libvirt/coding-hive/seed.iso"/>
           <target dev="sda" bus="sata"/>
           <readonly/>
           <address type="drive" controller="0" bus="0" target="0" unit="0"/>
@@ -363,13 +368,13 @@ let
           <address type="pci" domain="0x0000" bus="0x08" slot="0x00" function="0x0"/>
         </interface>
         <serial type="file">
-          <source path="/home/myers/p/coding-hive/logs/console.log"/>
+          <source path="/var/lib/libvirt/coding-hive/console.log"/>
           <target type="isa-serial" port="0">
             <model name="isa-serial"/>
           </target>
         </serial>
         <console type="file">
-          <source path="/home/myers/p/coding-hive/logs/console.log"/>
+          <source path="/var/lib/libvirt/coding-hive/console.log"/>
           <target type="serial" port="0"/>
         </console>
         <channel type="unix">
@@ -702,6 +707,9 @@ in
   ############################################################################
 
   systemd.tmpfiles.rules = [
+    # coding-hive's seed ISO and console log (item 12). Outside any home, so qemu
+    # can reach them; libvirt's DAC driver relabels the ISO when the VM starts.
+    "d /var/lib/libvirt/coding-hive 0755 root root -"
     "d ${ovmfDir} 0755 root root -"
     "L+ ${ovmfCode} - - - - ${ovmfMs.firmware}"
     "L+ ${ovmfVarsTemplate} - - - - ${ovmfMs.variablesMs}"
@@ -813,14 +821,12 @@ in
   ############################################################################
   ## 5. libvirtd's own mount dependencies
   ##
-  ## storage.nix already adds /var/lib/libvirt. coding-hive autostarts the moment
-  ## libvirtd comes up, and its CD-ROM (the cloud-init seed ISO) and its console
-  ## log are both on `vmpool/myers/p`. `unitConfig.RequiresMountsFor` is
-  ## list-valued, so this definition concatenates with storage.nix's rather than
-  ## conflicting -- the same merge nut.nix relies on.
+  ## storage.nix adds /var/lib/libvirt, which is all libvirtd needs. It used to
+  ## add /home/myers/p too, back when coding-hive's seed ISO and console log lived
+  ## there; since item 12 they are under /var/lib/libvirt/coding-hive.
+  ## coding-hive-net.service keeps its own /home/myers/p dependency (it runs
+  ## ~/p/coding-hive/bin/inv).
   ############################################################################
-
-  systemd.services.libvirtd.unitConfig.RequiresMountsFor = [ "/home/myers/p" ];
 
   ############################################################################
   ## 6. coding-hive-net.service

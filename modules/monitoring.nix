@@ -748,7 +748,12 @@ in
   services.smartd = {
     enable = true;
     autodetect = true;
-    devices = [ ];
+    # See the self-test comment below: the two rpool PNYs are listed only so
+    # DEVICESCAN skips them and they never get -s.
+    devices = [
+      { device = "/dev/disk/by-id/nvme-PNY_CS3040_4TB_SSD_PNY212721070601001E6"; options = "-d nvme"; }
+      { device = "/dev/disk/by-id/nvme-PNY_CS3040_4TB_SSD_PNY212721070601001E9"; options = "-d nvme"; }
+    ];
 
     extraOptions = [
       "-A /var/lib/smartmontools/attrlog."
@@ -762,7 +767,17 @@ in
     # slot is clear of the Sunday 00:24 scrubs, the 02:15 updatedb and the
     # 04:30 NUT self-test. A failed test is a `-l selftest` event, so it mails
     # like any other failure.
-    defaults.monitored = "-a -d removable -n standby -s S/../../3/02";
+    #
+    # EXCEPT the two PNY CS3040s (Phison E16, fw CS304524) under rpool. Their
+    # first scheduled run, 2026-09-23 06:05 UTC, is when both stopped
+    # responding in the same second (CSTS=0x1, reset failed), rpool
+    # suspended, and only pulling AC power revived them. See
+    # ~/p/gir/2026-09-23-gir-incidents/. They are listed in `devices` so
+    # DEVICESCAN skips them (smartd drops a scanned device with the same
+    # identity as a listed one), and they inherit DEFAULT (`monitored`), which
+    # therefore carries no -s. Only the DEVICESCAN line schedules tests. The
+    # PNYs are still monitored with -a and still mail.
+    defaults.monitored = "-a -d removable -n standby";
     defaults.autodetected = "-a -d removable -n standby -s S/../../3/02";
 
     notifications = {

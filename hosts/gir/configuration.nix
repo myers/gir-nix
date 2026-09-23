@@ -49,6 +49,13 @@
   boot.loader.timeout = 5;
   boot.loader.efi.canTouchEfiVariables = false;
 
+  # A failed stage 1 drops to emergency.target; without this the console only says
+  # "Cannot open access to console, the root account is locked" and Enter re-runs
+  # initrd.target (2026-09-23, 5 h in the crash kernel). Passwordless is deliberate:
+  # the console is physical or BMC KVM, and either can already boot a USB stick.
+  # The kdump crash kernel never waits here: it panics and reboots (kdump.nix).
+  boot.initrd.systemd.emergencyAccess = true;
+
   # Ticket 07: NixOS's own tree, all legacy mountpoints.
   fileSystems."/" = {
     device = "rpool/nixos/root";

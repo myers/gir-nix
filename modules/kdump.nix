@@ -205,6 +205,17 @@ let
     log "armed on $dev (enabled=$(cat "$CFG/enabled")), cmdline: $(cat /proc/cmdline)"
   '';
 
+  # Runs in the crash kernel's initrd (kdump-stage1-watchdog below). The other
+  # half of the rpool switch: panic-on-fail covers an import that FAILS, this
+  # covers one that HANGS (zio suspended on a dead device never errors out).
+  # sysrq-c rather than a reboot so the panic, and why, lands on netconsole.
+  stage1WatchdogScript = pkgs.writeShellScript "kdump-stage1-watchdog" ''
+    PATH=/bin
+    sleep 1200
+    echo "kdump-stage1-watchdog: crash kernel still in stage 1 after 20 min; panicking to reboot" > /dev/kmsg
+    echo c > /proc/sysrq-trigger
+  '';
+
   # Runs in the normal kernel: arms the crash kernel.
   loadScript = pkgs.writeShellScript "kdump-load" ''
     set -eu
@@ -241,6 +252,16 @@ let
     append="$append systemd.log_target=kmsg systemd.journald.forward_to_kmsg=1"
     append="$append systemd.unit=kdump-capture.service"
     append="$append rd.systemd.unit=initrd.target"
+    # The rpool switch. rpool imports -> stage 2 -> kdump-capture -> reboot.
+    # rpool does not (2026-09-23: both PNYs latched up, and kexec does not
+    # power-cycle them) -> the initrd reaches emergency.target, and nixpkgs'
+    # panic-on-fail.service, gated on exactly this flag, sysrq-crashes the
+    # crash kernel; panic=10 above turns that into a reboot. Before this the
+    # crash kernel sat in a locked emergency shell for 5 h. A reboot does not
+    # revive latched-up drives either, but it gets the next boot's own
+    # netconsole lines instead of silence. Crash kernel only: a normal boot
+    # that fails keeps its emergency shell (emergencyAccess, configuration.nix).
+    append="$append boot.panic_on_fail"
 
     echo "kdump-load: kexec -p $sys/kernel"
     exec kexec -p \
@@ -308,7 +329,7 @@ in
   # Cost on a normal boot: atlantic/netconsole/configfs sit in the initrd, and
   # udev loads atlantic a little earlier than before. Nothing else runs.
   boot.initrd.availableKernelModules = [ "atlantic" "configfs" "netconsole" ];
-  boot.initrd.systemd.storePaths = [ crashNetconsoleScript ];
+  boot.initrd.systemd.storePaths = [ crashNetconsoleScript stage1WatchdogScript ];
   boot.initrd.systemd.services.kdump-netconsole = {
     description = "Arm netconsole to misfit in the kdump crash kernel";
     wantedBy = [ "initrd.target" ];
@@ -324,6 +345,25 @@ in
       ExecStart = "${crashNetconsoleScript}";
       # Never let the witness hold up the dump.
       TimeoutStartSec = "60s";
+    };
+  };
+
+  # A normal crash-kernel stage 1 took ~1 min on 2026-09-23 (06:16:46 up,
+  # 06:17:50 import result), so 20 min is only ever a hang. Type=simple so it
+  # never holds up initrd.target; like any initrd service without
+  # IgnoreOnIsolate it is stopped when initrd-switch-root.target is isolated,
+  # so it can never fire during the stage-2 capture (that has its own 60 min
+  # timeout).
+  boot.initrd.systemd.services.kdump-stage1-watchdog = {
+    description = "Reboot the kdump crash kernel if stage 1 hangs";
+    wantedBy = [ "initrd.target" ];
+    unitConfig = {
+      DefaultDependencies = false;
+      ConditionPathExists = "/proc/vmcore";
+    };
+    serviceConfig = {
+      Type = "simple";
+      ExecStart = "${stage1WatchdogScript}";
     };
   };
 

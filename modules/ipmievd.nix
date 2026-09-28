@@ -32,8 +32,9 @@
   boot.kernelModules = [ "ipmi_si" "ipmi_devintf" "ipmi_msghandler" ];
 
   # ipmitool itself is used interactively and by the sensor-log/textfile
-  # collectors; Ubuntu has it at /usr/bin/ipmitool.
-  environment.systemPackages = [ pkgs.ipmitool ];
+  # collectors; Ubuntu has it at /usr/bin/ipmitool. dmidecode reads the SMBIOS
+  # tables (DIMM part numbers, speeds, ranks); the BMC and SEL don't have those.
+  environment.systemPackages = [ pkgs.ipmitool pkgs.dmidecode ];
 
   systemd.services.ipmievd = {
     description = "IPMI event daemon";

@@ -9,6 +9,7 @@
     ../../modules/storage.nix
     ../../modules/users.nix
     ../../modules/hygiene.nix
+    ../../modules/basic.nix
     ../../modules/postgresql.nix
     ../../modules/plex.nix
     ../../modules/netconsole.nix

@@ -13,6 +13,21 @@
 # module owns.
 { pkgs, ... }:
 
+let
+  # joe with backups off host-wide. Every personality's system rc (joerc,
+  # jmacsrc, jpicorc, rjoerc, jstarrc, joerc.zh_TW) ships `-nobackups`
+  # commented out by a leading space; moving it to column 1 turns it on. A
+  # user's own ~/.joerc (or ~/.jmacsrc, ...) replaces the system file, so it
+  # would need its own `-nobackups`.
+  joe = pkgs.joe.overrideAttrs (old: {
+    postInstall = (old.postInstall or "") + ''
+      for rc in $out/etc/joe/*rc $out/etc/joe/*rc.*; do
+        sed -i 's/^ -nobackups\t/-nobackups\t/' "$rc"
+      done
+      grep -q '^-nobackups' $out/etc/joe/joerc
+    '';
+  });
+in
 {
   ############################################################################
   ## nix-ld (ticket 11 §6)
@@ -109,6 +124,7 @@
     # editing and version control
     git
     vim
+    joe
     # shells and multiplexers (zsh itself comes from programs.zsh in users.nix)
     screen
     # process and I/O inspection

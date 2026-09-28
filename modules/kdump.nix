@@ -129,6 +129,11 @@ let
       exit 0
     fi
 
+    # Memory state of the crash kernel itself, onto netconsole: the two failed
+    # captures of 2026-09 died of crash-kernel OOM, and this is the line that
+    # says whether the next one is heading the same way.
+    echo "kdump-capture: $(tr -s ' ' < /proc/meminfo | grep -E '^(MemFree|MemAvailable):' | tr '\n' ' ')min_free_kbytes=$(cat /proc/sys/vm/min_free_kbytes) arc_c_max=$(awk '$1 == "c_max" { print $3 }' /proc/spl/kstat/zfs/arcstats)"
+
     stamp=$(date +%Y%m%d%H%M)
     dir=${coreDir}/$stamp
     mkdir -p "$dir" || exit 1
@@ -262,6 +267,12 @@ let
     # netconsole lines instead of silence. Crash kernel only: a normal boot
     # that fails keeps its emergency shell (emergencyAccess, configuration.nix).
     append="$append boot.panic_on_fail"
+    # Host sysctls stay out of the crash kernel. Stage 2 would otherwise run
+    # systemd-sysctl and apply vm.min_free_kbytes=2GiB (sysctl.nix), a watermark
+    # above what the 2 GiB crash kernel has free: on 2026-09-27 udevadm was
+    # OOM-killed 1.3 s after switch-root, then "System is deadlocked on
+    # memory", and kdump-capture never started. Capture needs none of them.
+    append="$append systemd.mask=systemd-sysctl.service"
 
     echo "kdump-load: kexec -p $sys/kernel"
     exec kexec -p \
@@ -379,7 +390,7 @@ in
       RequiresMountsFor = coreDir;
     };
 
-    path = [ makedumpfile pkgs.coreutils ];
+    path = [ makedumpfile pkgs.coreutils pkgs.gnugrep pkgs.gawk ];
 
     serviceConfig = {
       Type = "oneshot";

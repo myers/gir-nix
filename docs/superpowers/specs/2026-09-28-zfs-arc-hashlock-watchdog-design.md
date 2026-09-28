@@ -31,9 +31,9 @@ Non-goals: fixing the bug (stage 2); the kdump OOM (separate one-line change, §
 
 ## Components
 
-### 1. Patch `patches/zfs/0001-arc-hashlock-watchdog.patch` (against zfs 2.3.9)
+### 1. Patches `patches/zfs/0001-arc-debug-hold.patch` and `0002-arc-hashlock-watchdog.patch` (against zfs 2.3.9)
 
-All changes in `module/zfs/arc.c`, plus the license tag.
+Changes in `module/zfs/arc.c`, plus the SPL owner-report helper (see License).
 
 **Watchdog thread `arc_hl_wd`.** Started at the end of `arc_init()`, stopped at the start
 of `arc_fini()`, using whichever thread/cv idiom arc.c already uses for its own threads.
@@ -65,8 +65,9 @@ ZFS: arc hash lock <i> held <n>s by pid <pid> [<comm>] state=<R|S|D|...> waiters
 `waiters` is the `MUTEX_FLAG_WAITERS` bit of the kernel mutex owner word (no wait-list walk).
 At most 16 holder stacks per scan; after the per-holder lines, one summary line
 `ZFS: arc hash locks held=<h> stuck=<s> (>=<threshold>s)`. With `hung_task_panic=1` the
-panic path already calls `console_verbose()`, and these lines are `KERN_WARNING`, above
-gir's console loglevel of 4, so they reach netconsole either way.
+panic path already calls `console_verbose()`, and gir runs `kernel.printk = 7 4 1 7`
+(console loglevel 7), so these `KERN_WARNING` (4) lines reach netconsole either way. VMs
+must set `boot.consoleLogLevel = 7` for the same reason.
 
 **Debug hook.** In `arc_read`, immediately before `arc_hdr_alloc_abd(hdr, alloc_flags)`:
 `if (zfs_arc_debug_hold_ms) delay(MSEC_TO_TICK(zfs_arc_debug_hold_ms));` — the hash lock
@@ -80,9 +81,12 @@ is held at that point. Test-only.
 | `zfs_arc_hashlock_wd_interval_ms` | 10000 | scan period |
 | `zfs_arc_debug_hold_ms` | 0 | test hook: sleep this long holding the hash lock in `arc_read` |
 
-**License.** `sched_show_task()` is `EXPORT_SYMBOL_GPL`. This private debug build tags the
-module GPL (`META` `License:` line) so it can call it. The build is never distributed; the
-stage-2 fix stays CDDL-clean for upstream.
+**License.** `sched_show_task()` and `__put_task_struct()` are `EXPORT_SYMBOL_GPL`
+(verified in the 6.12.109 `Module.symvers`). `spl.ko` is already `MODULE_LICENSE("GPL")`, so
+the owner-report helper lives in SPL (`spl_mutex_report_owner()` in `spl-thread.c`), and
+`zfs.ko` stays CDDL and calls it. This replaces the original idea of retagging `META`, which
+would also flip configure-time GPL-symbol checks. Private build, never distributed; the
+stage-2 fix stays upstream-clean.
 
 ### 2. Nix wiring `modules/zfs-debug.nix`
 
@@ -101,7 +105,7 @@ VM: same kernel (6.12.109) and patched zfs, 2 GB RAM, 2 vCPU, two virtio disks.
    contains `arc_read`.
 4. Set the hold to 0; assert `dd` finishes and no new report appears for 20 s.
 
-### 4. Tier 2 `checks`-excluded runner `tests/zfs-arc-hashlock-tier2` (manual)
+### 4. Tier 2 nixosTest `packages.zfs-arc-hashlock-tier2` (manual, not in `checks`)
 
 VM: 4 GB RAM, 8 vCPU, `zfs_arc_max=3G`, 256 MB swap, patched zfs with defaults.
 Load, concurrently: `fio` random 16K reads across a 20 GB dataset (ARC misses);

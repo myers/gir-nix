@@ -108,6 +108,11 @@ in
       "rpool/srv/vikunja-mcp".use_template = production;
       "rpool/srv/actual-mcp-cottage".use_template = production;
 
+      # Jellyfin's config and SQLite database, moved here from bank7 on
+      # 2026-09-29. It had no snapshots before; the pre-move copies were
+      # cleaned up the same day, so these are the only history.
+      "rpool/srv/jellyfin-config".use_template = production;
+
       # Shared service state. `samba` carries passdb.tdb/secrets.tdb, which
       # ticket 05 finding 6 calls first-class migration state: losing it means
       # four Time Machine clients re-authenticating, possibly with full

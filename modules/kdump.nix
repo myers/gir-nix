@@ -285,10 +285,26 @@ let
     append="$append systemd.mask=systemd-sysctl.service"
 
     echo "kdump-load: kexec -p $sys/kernel"
-    exec kexec -p \
+    kexec -p \
       --initrd="$sys/initrd" \
       --command-line="$params $append" \
       "$sys/kernel"
+    # What kdump-rearm compares against /run/current-system.
+    echo "$sys" > ${loadedStamp}
+  '';
+
+  loadedStamp = "/run/kdump-loaded-system";
+
+  # Runs in the normal kernel, from kdump-rearm.timer.
+  rearmScript = pkgs.writeShellScript "kdump-rearm" ''
+    set -u
+    # Stopped on purpose (or failed, which its own status shows): leave it.
+    systemctl is-active -q kdump-load.service || exit 0
+    loaded=$(cat ${loadedStamp} 2>/dev/null || true)
+    current=$(readlink -f /run/current-system)
+    [ "$loaded" = "$current" ] && exit 0
+    echo "kdump-rearm: armed with ''${loaded:-unknown}, running $current; re-arming"
+    exec systemctl restart kdump-load.service
   '';
 in
 {
@@ -317,32 +333,41 @@ in
       RemainAfterExit = true;
       ExecStart = "${loadScript}";
       ExecStop = "${pkgs.kexec-tools}/bin/kexec -p -u";
+      ExecStopPost = "${pkgs.coreutils}/bin/rm -f ${loadedStamp}";
       StandardOutput = "journal+console";
     };
   };
 
   # /run/current-system is re-pointed by `nixos-rebuild switch`; re-arm so the
-  # loaded crash kernel is never a generation behind the running one.
+  # loaded crash kernel is never a generation behind the running one. The crash
+  # kernel boots the *loaded* generation's stage 2, so a stale arm runs stale
+  # capture units.
   #
-  # The path unit triggers kdump-rearm, not kdump-load itself. kdump-load is
-  # RemainAfterExit and so already active, and a path unit only *starts* its
-  # unit: starting an active unit does nothing. Until 2026-09-28 the path
-  # pointed straight at kdump-load, and a switch at 21:49:49 left the crash
-  # kernel armed with the boot generation. Only reboots ever re-armed it.
+  # A poll, not a path unit. Two path-unit versions both failed on real switches
+  # (2026-09-28 21:49:49 and 2026-09-29 09:40:29), and neither ever fired:
+  #   * Unit=kdump-load: a path unit only *starts* its unit, and the
+  #     RemainAfterExit kdump-load is already active, so that is a no-op.
+  #   * Unit=kdump-rearm (restart): still never triggered. Most likely,
+  #     PathChanged= follows the symlink and watches the store directory it
+  #     points at, which never changes. The switch swaps in a new symlink, which
+  #     systemd only treats as a reason to re-watch.
+  # Comparing a stamp costs a readlink every 2 min and does not care how the
+  # symlink gets replaced.
   systemd.services.kdump-rearm = {
-    description = "Reload the kdump crash kernel for the new system generation";
+    description = "Re-arm the kdump crash kernel if the system generation changed";
+    path = [ config.systemd.package pkgs.coreutils ];
     serviceConfig = {
       Type = "oneshot";
-      ExecStart = "${config.systemd.package}/bin/systemctl restart kdump-load.service";
+      ExecStart = "${rearmScript}";
     };
   };
 
-  systemd.paths.kdump-load = {
-    description = "Re-arm the kdump crash kernel when the system generation changes";
-    wantedBy = [ "multi-user.target" ];
-    pathConfig = {
-      PathChanged = "/run/current-system";
-      Unit = "kdump-rearm.service";
+  systemd.timers.kdump-rearm = {
+    description = "Check every 2 min that the kdump crash kernel matches the running generation";
+    wantedBy = [ "timers.target" ];
+    timerConfig = {
+      OnActiveSec = "2min";
+      OnUnitActiveSec = "2min";
     };
   };
 

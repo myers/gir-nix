@@ -39,6 +39,7 @@ let
   # zfs-share and zfs-zed from zfs.target), but `x-systemd.requires=` creates both a
   # Requires= and an After= on it, which starts it and its `zfs-volume-wait.service`
   # on demand. That is what makes "ordered after the zvols appear" true.
+  # Unused while /srv/dropbox is unmounted (2026-09-29); kept for re-enabling it.
   zvolOpts = [
     "x-systemd.requires=zfs-volumes.target"
     "x-systemd.device-timeout=10m"
@@ -242,12 +243,17 @@ in
     };
 
     # ---- ext4 on zvol -------------------------------------------------------
+    # Unmounted 2026-09-29, with the Dropbox and memories pods commented out in
+    # fluxing. Its jbd2 thread was stuck in every recent hang (09-15, 09-18,
+    # 09-27, 09-29; ~/p/gir/2026-09-29-gir-kernfs-hang/). The zvol bank7/dropbox
+    # is kept intact. To bring it back: uncomment this, re-add "/srv/dropbox" to
+    # k3s's RequiresMountsFor below, then re-enable the pods.
     # Nine pod hostPaths live inside this one. NO `nofail` (ticket 07).
-    "/srv/dropbox" = {
-      device = "/dev/zvol/bank7/dropbox";
-      fsType = "ext4";
-      options = zvolOpts;
-    };
+    # "/srv/dropbox" = {
+    #   device = "/dev/zvol/bank7/dropbox";
+    #   fsType = "ext4";
+    #   options = zvolOpts;
+    # };
 
     # ---- the containerd binds Ubuntu's fstab carries ------------------------
     # "needed for buildkit?" in Ubuntu's fstab. The source is the containerd-fs
@@ -340,7 +346,7 @@ in
         unitConfig.RequiresMountsFor = [
           "/var/lib/rancher/k3s"
           "/var/lib/rancher/k3s/agent/containerd"
-          "/srv/dropbox"
+          # "/srv/dropbox"  # unmounted 2026-09-29, see fileSystems above
           "/srv/vaultwarden"
           "/srv/winshiphouse"
           "/srv/vikunja-mcp"

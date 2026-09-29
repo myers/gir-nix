@@ -70,6 +70,13 @@
     # instead of 10.
     "kernel.hung_task_warnings" = -1;
 
+    # On a hung task, NMI-backtrace every CPU before panicking. The lock holder
+    # is never in the D-state list: not the ARC hash-lock holder on 2026-09-27,
+    # and not the kernfs_fop_open mutex holder on 2026-09-29. If it is running
+    # (e.g. looping in reclaim), this is its only trace on netconsole when the
+    # vmcore fails. Proposed in 2026-09-27-gir-arc-deadlock.md §6.2.
+    "kernel.hung_task_all_cpu_backtrace" = 1;
+
     # Panic on oops rather than limping on with a corrupt task. Ubuntu got this
     # only as a side effect of kdump-config; here it is declarative.
     "kernel.panic_on_oops" = 1;

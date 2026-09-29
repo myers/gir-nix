@@ -221,6 +221,16 @@ let
     echo c > /proc/sysrq-trigger
   '';
 
+  # Stage 2's counterpart (kdump-stage2-watchdog below). Capture is allowed
+  # 60 min (kdump-capture's TimeoutStartSec), so 75 min is only ever a stuck
+  # stage 2 — on 2026-09-29 an emergency shell that sat for 38 min until a
+  # human rebooted it.
+  stage2WatchdogScript = pkgs.writeShellScript "kdump-stage2-watchdog" ''
+    sleep 4500
+    echo "kdump-stage2-watchdog: crash kernel still in stage 2 after 75 min; panicking to reboot" > /dev/kmsg
+    echo c > /proc/sysrq-trigger
+  '';
+
   # Runs in the normal kernel: arms the crash kernel.
   loadScript = pkgs.writeShellScript "kdump-load" ''
     set -eu
@@ -313,12 +323,26 @@ in
 
   # /run/current-system is re-pointed by `nixos-rebuild switch`; re-arm so the
   # loaded crash kernel is never a generation behind the running one.
+  #
+  # The path unit triggers kdump-rearm, not kdump-load itself. kdump-load is
+  # RemainAfterExit and so already active, and a path unit only *starts* its
+  # unit: starting an active unit does nothing. Until 2026-09-28 the path
+  # pointed straight at kdump-load, and a switch at 21:49:49 left the crash
+  # kernel armed with the boot generation. Only reboots ever re-armed it.
+  systemd.services.kdump-rearm = {
+    description = "Reload the kdump crash kernel for the new system generation";
+    serviceConfig = {
+      Type = "oneshot";
+      ExecStart = "${config.systemd.package}/bin/systemctl restart kdump-load.service";
+    };
+  };
+
   systemd.paths.kdump-load = {
     description = "Re-arm the kdump crash kernel when the system generation changes";
     wantedBy = [ "multi-user.target" ];
     pathConfig = {
       PathChanged = "/run/current-system";
-      Unit = "kdump-load.service";
+      Unit = "kdump-rearm.service";
     };
   };
 
@@ -364,7 +388,7 @@ in
   # never holds up initrd.target; like any initrd service without
   # IgnoreOnIsolate it is stopped when initrd-switch-root.target is isolated,
   # so it can never fire during the stage-2 capture (that has its own 60 min
-  # timeout).
+  # timeout, and kdump-stage2-watchdog behind it).
   boot.initrd.systemd.services.kdump-stage1-watchdog = {
     description = "Reboot the kdump crash kernel if stage 1 hangs";
     wantedBy = [ "initrd.target" ];
@@ -383,12 +407,25 @@ in
 
     # Deliberately not wantedBy anything: it is reached only by
     # systemd.unit=kdump-capture.service on the crash kernel's command line.
-    # Default dependencies pull in sysinit/local-fs, which is what brings up
-    # ZFS and therefore /var/crash.
+    #
+    # No default dependencies: capture needs /var/crash and nothing else. With
+    # them, sysinit.target pulled in local-fs.target and so every host mount.
+    # On 2026-09-29 the crash kernel never imported bank7 (only rpool in stage 1
+    # and vmpool for /home/myers/p), so /dev/zvol/bank7/dropbox never appeared.
+    # /srv/dropbox (no nofail, storage.nix) timed out after 10 min,
+    # local-fs.target failed into emergency.target, and the isolate cancelled
+    # this job. No vmcore. Skipping sysinit also skips udev coldplug over ~20
+    # disks, the process the 2026-09-27 crash-kernel OOM killed first.
+    #
+    # /var/crash is rpool/srv/crash, and rpool is imported in stage 1.
+    # journald: StandardOutput below goes through its socket.
     unitConfig = {
+      DefaultDependencies = false;
       ConditionPathExists = "/proc/vmcore";
       RequiresMountsFor = coreDir;
     };
+    wants = [ "systemd-journald.socket" "kdump-stage2-watchdog.service" ];
+    after = [ "systemd-journald.socket" ];
 
     path = [ makedumpfile pkgs.coreutils pkgs.gnugrep pkgs.gawk ];
 
@@ -405,6 +442,24 @@ in
       TimeoutStartSec = "60min";
       StandardOutput = "journal+console";
       StandardError = "journal+console";
+    };
+  };
+
+  # kdump-capture's ExecStopPost reboots only if the capture *ran*. A job that
+  # never starts (dependency failed, or cancelled by an isolate to emergency,
+  # as on 2026-09-29) reboots nothing, and stage 1's watchdog is already gone.
+  # IgnoreOnIsolate so emergency.target cannot stop this one too. Pulled in
+  # only by kdump-capture, which only the crash kernel's command line starts.
+  systemd.services.kdump-stage2-watchdog = {
+    description = "Reboot the kdump crash kernel if stage 2 hangs";
+    unitConfig = {
+      DefaultDependencies = false;
+      ConditionPathExists = "/proc/vmcore";
+      IgnoreOnIsolate = true;
+    };
+    serviceConfig = {
+      Type = "simple";
+      ExecStart = "${stage2WatchdogScript}";
     };
   };
 }

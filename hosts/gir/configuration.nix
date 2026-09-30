@@ -24,6 +24,8 @@
     ../../modules/sysctl.nix
     ../../modules/networking.nix
     ../../modules/zfs-maintenance.nix
+    ../../modules/zfs-debuginfo.nix
+    ../../modules/vmcore-tools.nix
     ../../modules/syncthing.nix
     ../../modules/sysstat.nix
     ../../modules/locate.nix

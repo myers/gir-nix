@@ -34,7 +34,7 @@
   networking.hostId = "375d89cc";
 
   # Ticket 02: pin, do not compute.
-  boot.kernelPackages = pkgs.linuxPackages_6_12;
+  boot.kernelPackages = pkgs.linuxPackages_6_18;
   boot.supportedFilesystems = [ "zfs" ];
   boot.zfs.package = pkgs.zfs_2_3;
   boot.zfs.devNodes = "/dev/disk/by-id";

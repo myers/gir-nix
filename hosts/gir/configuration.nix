@@ -106,6 +106,23 @@
         - traefik
       kubelet-arg:
         - "max-pods=250"
+        # Memory fence, 2026-09-29. Until now kubepods.slice memory.max was all
+        # of RAM (132478873600), so a pod surge pushed the host into global
+        # direct reclaim. That is the state in which gir's ZFS ARC hash-lock and
+        # kernfs hangs happen (~/p/gir/gir-kernfs-hang-session-outcome-20260929.md).
+        # Before the 09-29 hang, uncapped Woodpecker zarn builds churned 45 GB of
+        # page cache and 9 GB of dirty mmap pages on ZFS. The kubelet takes
+        # enforce-node-allocatable=pods by default, so this sets
+        # kubepods.slice memory.max to 123.4 - 48 = ~75 GiB. Pods over it are
+        # reclaimed or OOM-killed inside their own cgroup, and the host keeps
+        # its memory.
+        # The 48 GiB left for the host: ARC 24 GiB (sysctl.nix) + coding-hive VM
+        # 16 GiB (currentMemory; its balloon max is 64 GiB, so raise this if it
+        # is ever grown) + ~8 GiB for host services (postgresql, plex, samba,
+        # k3s itself) and kernel slab.
+        # Read only at kubelet start: `systemctl restart k3s` after a switch
+        # (KillMode=process, pods keep running).
+        - "system-reserved=memory=48Gi"
       kube-apiserver-arg:
         - audit-policy-file=/etc/rancher/k3s/audit-policy.yaml
         - audit-log-path=/var/log/k3s-audit.log

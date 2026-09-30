@@ -113,6 +113,19 @@
     # threads failed order-0 atomic allocations at the same moment. 2 GiB.
     "vm.min_free_kbytes" = 2097152;
 
+    # Dirty page cache limits, 2026-09-29. The kernel defaults (dirty_ratio 20,
+    # dirty_background_ratio 10) are percentages of *available* memory, ~10 GB
+    # and ~5 GB here. Before the 09-29 hang, dirty pages hit 8.7 GB (19:58)
+    # and 9.0 GB (20:36) during uncapped zarn builds (sar -f
+    # /var/log/sa/sa28). On ZFS those are mmap'd files (rust-lld output):
+    # ZFS keeps its own dirty data, and coding-hive's zvols use cache=none.
+    # Flushing GBs of them means allocations inside ZFS while memory is under
+    # pressure. These start background writeback at 256 MiB and throttle
+    # writers at 1 GiB, so a heavy writer waits instead of piling up GBs. The
+    # *_bytes forms override the *_ratio forms (setting one zeroes the other).
+    "vm.dirty_background_bytes" = 268435456;
+    "vm.dirty_bytes" = 1073741824;
+
     # The 2026-09-15 panic was a reclaim/swap-write deadlock: 710 tasks stuck
     # in mempool_alloc under raid1_write_request, swapping to the md0 RAID1.
     # Fewer swap writes means fewer chances to hit it. 60 is the default and

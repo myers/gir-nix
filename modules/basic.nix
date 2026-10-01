@@ -70,5 +70,11 @@ in
     # to it. nixpkgs 2.9.4 matches the controllers in the cluster (v2.9.4); if
     # they drift more than a minor apart, `flux check` says so.
     fluxcd
+    # the CI server is Woodpecker (ci.monoloco.net, v3.18.1 fork), and agents
+    # read pipeline state with ~/.local/bin/wp, a wrapper that injects the server
+    # and token and execs woodpecker-cli. Until 2026-10-01 the CLI was not on PATH
+    # (the wrapper died with "exec: woodpecker-cli: not found" and was run through
+    # `nix shell`). nixpkgs 3.18.0 is a patch behind the server; same minor.
+    woodpecker-cli
   ];
 }

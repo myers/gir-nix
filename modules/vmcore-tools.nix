@@ -9,7 +9,10 @@
 #
 # Open a dump (no root needed if the dump is readable):
 #   drgn -c /var/crash/<stamp>/dump.<stamp> -s /etc/gir-debuginfo/kernel/vmlinux \
-#        --extra-symbols /etc/gir-debuginfo/zfs/zfs.ko.debug
+#        -s /etc/gir-debuginfo/zfs/zfs.ko.debug -s /etc/gir-debuginfo/zfs/spl.ko.debug
+# Use -s, not --extra-symbols, for module debug files: -s pairs a file with the
+# loaded module by build-id and relocates it; --extra-symbols assumes the file is
+# NOT a loaded module, so statics resolve to unrelocated offsets (0x9280, unmapped).
 # `drgn-crash` accepts crash-style commands (bt, ps, ...) on top of the same data.
 { config, pkgs, ... }:
 

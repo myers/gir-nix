@@ -846,7 +846,12 @@ in
     wantedBy = [ "multi-user.target" ];
 
     requires = [ "libvirtd.service" ];
-    after = [ "libvirtd.service" ];
+    # libvirt-guests resumes the VM from its managed save on a clean reboot
+    # (onShutdown = "suspend"). Without this ordering, vm.boot-setup raced it:
+    # domstate said "shut off", `virsh start` then hit "Domain is already active"
+    # and the unit failed with the port forwards unapplied (2026-09-30 22:28).
+    # tasks.py now tolerates that too; this just stops the race from happening.
+    after = [ "libvirtd.service" "libvirt-guests.service" ];
 
     # Verbatim from the Ubuntu unit: the VM's macvtap LAN NIC hangs off the
     # physical eno1, and libvirt cannot create the macvtap device before that NIC

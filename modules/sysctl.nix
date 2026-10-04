@@ -113,6 +113,15 @@
     # threads failed order-0 atomic allocations at the same moment. 2 GiB.
     "vm.min_free_kbytes" = 2097152;
 
+    # Gap between the min/low/high watermarks, in 1/10000 of memory. The
+    # default 10 gives ~0.5 GiB here, so kswapd wakes late and allocators fall
+    # into direct reclaim. The 2026-10-04 hang was 816 tasks in direct reclaim
+    # with 61 of 64 CPUs spinning on one MGLRU lru_lock (ZFS z_wr_iss threads),
+    # while ~40 GiB was still reclaimable. 200 widens the gap to ~2.4 GiB so
+    # kswapd reclaims in the background before allocators have to.
+    # See ~/p/gir/2026-10-04-gir-reclaim-deadlock/README.md.
+    "vm.watermark_scale_factor" = 200;
+
     # Dirty page cache limits, 2026-09-29. The kernel defaults (dirty_ratio 20,
     # dirty_background_ratio 10) are percentages of *available* memory, ~10 GB
     # and ~5 GB here. Before the 09-29 hang, dirty pages hit 8.7 GB (19:58)
@@ -224,5 +233,16 @@
     # total, so it does not reopen the sizing the 2026-09-16 bank10 metadata
     # stall settled.
     options zfs zfs_arc_dnode_limit_percent=25
+
+    # ZIO taskq threads as a percent of CPUs. Default 80 gives each pool two
+    # z_wr_iss taskqs of ~25 threads (~51/pool, ~207 across 5 pools). Every
+    # one of them can enter direct reclaim from arc_write_ready -> abd_alloc,
+    # and on 2026-10-04 61 of 64 CPUs were z_wr_iss spinning on one lru_lock,
+    # starving the runnable ARC hash-lock holders of CPU until hung_task
+    # panicked. 25 gives one 16-thread wr_iss taskq per pool (spa.c
+    # ZTI_MODE_SYNC), so one busy pool can occupy at most 16 CPUs. It also
+    # scales the read/write interrupt taskqs. Read at pool import: needs a
+    # reboot. See ~/p/gir/2026-10-04-gir-reclaim-deadlock/README.md.
+    options zfs zio_taskq_batch_pct=25
   '';
 }

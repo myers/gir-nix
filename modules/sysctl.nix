@@ -58,10 +58,14 @@
     # postmortems in a row failed to identify it.
     "kernel.hung_task_panic" = 1;
 
-    # 300s, not the 120s default, to cut false positives: a legitimately slow
-    # operation on a 6-pool ZFS box can block for minutes. All the observed
-    # lockups ran 22–109 minutes, so 300s catches them with room to spare.
-    "kernel.hung_task_timeout_secs" = 300;
+    # 1200s, not the 120s default. 300s produced a false positive on
+    # 2026-10-05 03:10 UTC: bank10's txg sync was stuck behind a monthly scrub
+    # plus Immich's nightly 1.4M-file integrity crawl, two `zfs allow` calls
+    # from sanoid waited more than 300s, and the box panicked while userspace
+    # was still working (~/p/gir/2026-10-04-gir-hang-10/README.md). 1200s sits
+    # above ZFS's 600s deadman, so a slow txg logs a deadman event first. The
+    # real lockups ran 22–109 minutes, so 1200s still catches them.
+    "kernel.hung_task_timeout_secs" = 1200;
 
     # hung_task_warnings is a PER-BOOT BUDGET, not a rate limit. The default of
     # 10 is spent on the first burst and never replenished; the 2026-08-27

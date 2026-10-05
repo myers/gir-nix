@@ -43,11 +43,25 @@
   # hostId matches Ubuntu's, so a clean import never needs -f; the 26.11 default.
   boot.zfs.forceImportRoot = false;
 
-  # Ticket 06: systemd-boot on ESP #2 only; never touch BootOrder.
+  # Ticket 06: systemd-boot on ESP #2. NixOS never writes NVRAM (canTouchEfiVariables
+  # below); entries and BootOrder are set by hand with efibootmgr.
   boot.loader.systemd-boot = {
     enable = true;
     configurationLimit = 5;
     editor = false;
+    # ESP #1 mirrors ESP #2 (2026-10-05, after Ubuntu's ESP was retired), so a dead PNY
+    # still leaves a bootable ESP; its NVRAM entry is second in BootOrder. Copied on
+    # every bootloader install. vfat: -rt, no owners or perms. The random seed is
+    # left out so two ESPs never hand out the same seed. A missing mirror (dead disk,
+    # nofail mount) warns and does not fail the switch.
+    extraInstallCommands = ''
+      if ${pkgs.util-linux}/bin/mountpoint -q /boot-mirror; then
+        ${pkgs.rsync}/bin/rsync -rt --delete --modify-window=2 \
+          --exclude=/loader/random-seed /boot/ /boot-mirror/
+      else
+        echo "warning: /boot-mirror (ESP #1) is not mounted; mirror not updated" >&2
+      fi
+    '';
   };
   boot.loader.timeout = 5;
   boot.loader.efi.canTouchEfiVariables = false;
@@ -78,6 +92,14 @@
     device = "/dev/disk/by-uuid/9E8F-2366";
     fsType = "vfat";
     options = [ "umask=0077" ];
+  };
+  # ESP #1, the mirror of /boot (see extraInstallCommands). By PARTUUID: the partition
+  # predates the 2026-10-05 reformat, the filesystem UUID does not. nofail: losing this
+  # disk must never stop a boot from ESP #2.
+  fileSystems."/boot-mirror" = {
+    device = "/dev/disk/by-partuuid/a0a626b0-eeef-420b-8e3a-3c9c2633cfcc";
+    fsType = "vfat";
+    options = [ "umask=0077" "nofail" "x-systemd.device-timeout=10s" ];
   };
 
   # Ticket 13: pinned via the flake's k3s-pin overlay; k3s-guard.nix enforces it.

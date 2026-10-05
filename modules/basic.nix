@@ -70,6 +70,9 @@ in
     # The tarball's own blobs (vtoycli, static mkexfatfs) run as-is; nixpkgs' ventoy
     # is marked insecure and lags (1.1.12), so it is not installed here.
     parted
+    # git LFS: zarn keeps fixtures in LFS on gt. Without the filter a clone of it only
+    # half checks out (1,813 files left deleted in the index on 2026-10-05).
+    git-lfs
     # the cluster is k3s, but helm is not part of services.k3s
     kubernetes-helm
     # nor is the Flux CLI, and ~/p/fluxing's `bin/inv flux.reconcile` shells out

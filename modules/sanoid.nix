@@ -99,8 +99,10 @@ in
       # NEVER pushed off-box (ticket 07 item 11).
       "rpool/srv/secrets".use_template = production;
 
-      # k3s control-plane state. Window B boots a clone of this (ticket 09).
-      "rpool/srv/k3s".use_template = production;
+      # k3s control-plane state. NixOS has run on the Window B clone since
+      # 2026-09-20; the Ubuntu original `rpool/srv/k3s` is retired
+      # (iss ubuntu-only-datasets-on-rpool), so this was snapshotting a dead copy.
+      "rpool/srv/k3s-nixos".use_template = production;
 
       # The four /srv services that moved out of Ubuntu's root dataset.
       "rpool/srv/vaultwarden".use_template = production;

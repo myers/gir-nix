@@ -84,7 +84,8 @@ in
     # quiesce script snapshots rpool/srv/k3s@pre-windowB and clones it to this name
     # BEFORE the BootNext — if the clone is missing this mount fails and k3s fails
     # closed with it, which is the intended behaviour, not a bug.
-    # After a clean soak: `zfs promote rpool/srv/k3s-nixos`, then retire the original.
+    # Retired 2026-10-05: `zfs promote rpool/srv/k3s-nixos`, original archived to
+    # bank9/archive and destroyed (iss ubuntu-only-datasets-on-rpool). The name stays.
     "/var/lib/rancher/k3s" = {
       device = "rpool/srv/k3s-nixos";
       fsType = "zfs";

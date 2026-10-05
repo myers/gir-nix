@@ -64,6 +64,12 @@ in
     # anything). Without this, `sudo efibootmgr` is "command not found" at the moment
     # you most need it, which is what happened promoting the BootOrder on 2026-09-20.
     efibootmgr
+    # GNU parted (and partprobe). util-linux's fdisk/sfdisk cover most work, but the
+    # Ventoy 1.1.17 linux tarball's Ventoy2Disk.sh refuses to partition a stick
+    # without `parted`; it was missing when building a diagnostic USB on 2026-10-03.
+    # The tarball's own blobs (vtoycli, static mkexfatfs) run as-is; nixpkgs' ventoy
+    # is marked insecure and lags (1.1.12), so it is not installed here.
+    parted
     # the cluster is k3s, but helm is not part of services.k3s
     kubernetes-helm
     # nor is the Flux CLI, and ~/p/fluxing's `bin/inv flux.reconcile` shells out

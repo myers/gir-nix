@@ -21,6 +21,7 @@
     ../../modules/libvirt.nix
     ../../modules/monitoring.nix
     ../../modules/sanoid.nix
+    ../../modules/syncoid.nix
     ../../modules/sysctl.nix
     ../../modules/networking.nix
     ../../modules/zfs-maintenance.nix

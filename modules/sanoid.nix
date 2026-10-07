@@ -16,10 +16,11 @@
 #     those two section headers), so this file carries the NEW names only.
 #   * `rpool/srv/crash` and `rpool/nixos/nix` are excluded — see the assertion
 #     at the bottom, which makes the exclusion enforced rather than remembered.
-#   * None of these datasets goes into the `remotebackup` push (ticket 07
-#     item 11), `rpool/srv/secrets` least of all. **syncoid is not configured
-#     in this file at all** and must not be: `remotebackup` stays a user cron
-#     job on myers' crontab (ticket 05), untouched by the migration.
+#   * Offsite replication is syncoid.nix, not this file. The claim made here
+#     at the cutover, that `remotebackup` stayed a cron job "untouched by the
+#     migration", was wrong: the cutover dropped the crontab and the job
+#     stopped (gir iss `restore-offsite-replication`). syncoid.nix asserts that
+#     everything it sends or receives locally has an entry here.
 #
 # Source of the templates and the pre-existing entries: /etc/sanoid/sanoid.conf
 # on the live host, read 2026-09-19.
@@ -38,6 +39,10 @@ let
   # else. Deliberately not "improved" during the port — a retention change
   # during a migration is a change you cannot attribute later.
   production = [ "production" ];
+  # Prune-only: the same retention, no snapshots of its own. For a dataset
+  # whose snapshots arrive by `zfs receive` (gir iss
+  # `retention-for-ungoverned-datasets`, decision 1, ADR 0003 in ~/p/gir).
+  pruneOnly = [ "prune_only" ];
 in
 {
   services.sanoid = {
@@ -58,6 +63,19 @@ in
       autosnap = true;
       autoprune = true;
     };
+    # These numbers are also r2d2's offsite history: syncoid.nix pushes with
+    # --delete-target-snapshots, which mirrors this pruning onto r2d2.
+    # Lowering them prunes offsite too; that is intended.
+
+    templates.prune_only = {
+      frequently = 0;
+      hourly = 0;
+      daily = 5;
+      monthly = 3;
+      yearly = 0;
+      autosnap = false;
+      autoprune = true;
+    };
 
     datasets = {
       ########################################################################
@@ -76,6 +94,15 @@ in
       "rpool/home/myers".use_template = production;
 
       "rpool/srv/postgresql".use_template = production;
+
+      # Forgejo (fj): pushed offsite by syncoid.nix, which needs sanoid's
+      # snapshots to send. It had none before 2026-10-07.
+      "rpool/srv/forgejo".use_template = production;
+
+      # r2d2's music, pulled here nightly by syncoid.nix. Prune-only: the
+      # snapshots come from r2d2. The first run prunes ~1600 snapshots back to
+      # 2021 (decided knowingly in retention-for-ungoverned-datasets).
+      "bank7/music/r2d2".use_template = pruneOnly;
 
       ########################################################################
       ## New in ticket 07's manifest — every row marked Sanoid "y".

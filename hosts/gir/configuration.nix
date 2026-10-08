@@ -22,6 +22,7 @@
     ../../modules/monitoring.nix
     ../../modules/sanoid.nix
     ../../modules/syncoid.nix
+    ../../modules/offsite-alarm.nix
     ../../modules/sysctl.nix
     ../../modules/networking.nix
     ../../modules/zfs-maintenance.nix

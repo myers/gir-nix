@@ -22,7 +22,16 @@
 # Not here yet: the duplicity half of ticket 01 (the `lh` archive and the new
 # host-secrets archive). It needs a GPG key escrowed in 1Password and the old
 # passphrase moved into /etc/gir-secrets first, so the user chose to ship the
-# ZFS half on its own.
+# ZFS half on its own. When it lands, each archive's newest manifest mtime on
+# r2d2 joins the staleness alarm's list (offsite-alarm.nix).
+#
+# Watching it: offsite-alarm.nix (gir iss `offsite-staleness-alarm`, ADR 0004
+# in ~/p/gir: the alarm runs here and reads r2d2). Its target list is
+# generated from `commands` below, so every push and pull here is judged by
+# the age of its newest snapshot on the receiving side (mail past 48 h),
+# r2d2's `mmm` capacity alarms at 90%, a heartbeat table goes out every
+# Monday, and each syncoid-* unit mails root through notify-failure@ the
+# moment it fails.
 #
 # The 2026-10-07 restart is a full resend. r2d2 kept only each target's
 # 09-20 00:00 daily, and gir's sanoid had since pruned it, so no common

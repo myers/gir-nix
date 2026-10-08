@@ -19,11 +19,9 @@
 #   pull  r2d2 mmm/music        -> bank7/music/r2d2  (the one pull; 450k cap,
 #         as the cron had it)
 #
-# Not here yet: the duplicity half of ticket 01 (the `lh` archive and the new
-# host-secrets archive). It needs a GPG key escrowed in 1Password and the old
-# passphrase moved into /etc/gir-secrets first, so the user chose to ship the
-# ZFS half on its own. When it lands, each archive's newest manifest mtime on
-# r2d2 joins the staleness alarm's list (offsite-alarm.nix).
+# The duplicity half of ticket 01 (the `lh` archive and the host-secrets
+# archive) is duplicity.nix: file-level, GPG-encrypted, on its own 02:30
+# timers, and in the same staleness alarm by newest manifest mtime.
 #
 # Watching it: offsite-alarm.nix (gir iss `offsite-staleness-alarm`, ADR 0004
 # in ~/p/gir: the alarm runs here and reads r2d2). Its target list is

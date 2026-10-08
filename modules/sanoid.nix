@@ -122,8 +122,12 @@ in
       "rpool/home/zeke".use_template = production;
 
       # Host secrets: hashedPasswordFiles, SSH host keys, postfix sasl_passwd,
-      # NUT passwords, a redundant copy of the k3s token. Snapshotted, and
-      # NEVER pushed off-box (ticket 07 item 11).
+      # NUT passwords, a redundant copy of the k3s token. Snapshotted here and
+      # never sent raw: ticket 07 item 11 said NEVER off-box, and ADR 0002 in
+      # ~/p/gir reversed that. Its newest snapshot now goes offsite nightly
+      # inside duplicity.nix's host-secrets archive, GPG-encrypted to a key
+      # whose private half is escrowed in 1Password, never on gir. Don't add
+      # it to syncoid.nix: that would send it to r2d2 in plaintext.
       "rpool/srv/secrets".use_template = production;
 
       # k3s control-plane state. NixOS has run on the Window B clone since

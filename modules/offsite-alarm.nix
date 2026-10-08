@@ -41,8 +41,12 @@
 # target, per host -- today just r2d2's `mmm`, which reached 96% unnoticed in
 # September 2026.
 #
-# Duplicity (not built yet, map ticket af03d68) must add each archive's newest
-# manifest mtime on r2d2 to this same list, at the same threshold.
+# Duplicity archives (duplicity.nix, gir iss `offsite-duplicity-units`
+# af03d68) join the same list through `gir.offsite.duplicityTargets`. For them
+# "newest" is the mtime of the newest `duplicity-*.manifest.gpg` in the
+# archive's directory on r2d2, read with `find` over the same ssh: duplicity
+# writes the manifest last, so its mtime is when a backup set completed. Same
+# 48 h threshold, same heartbeat table.
 #
 # Credentials and sandbox: runs as the syncoid module's `syncoid` user with its
 # key /var/lib/syncoid/remotebackup and r2d2's host key pinned in
@@ -88,14 +92,27 @@ let
       dataset = if remote then lib.last parts else cmd.target;
     };
 
-  targets = lib.mapAttrsToList parse config.services.syncoid.commands;
-  remoteTargets = lib.filter (t: t.host != "") targets;
+  zfsTargets = map (t: t // { kind = "zfs"; }) (
+    lib.mapAttrsToList parse config.services.syncoid.commands
+  );
+  remoteTargets = lib.filter (t: t.host != "") zfsTargets;
 
-  # One line per target: name <TAB> host <TAB> dataset, host `-` when local
-  # (an empty field would collapse: tab is IFS whitespace to `read`).
+  dupTargets = lib.mapAttrsToList (name: t: {
+    inherit name;
+    inherit (t) host;
+    kind = "dup";
+    dataset = t.dir;
+  }) config.gir.offsite.duplicityTargets;
+
+  targets = zfsTargets ++ dupTargets;
+
+  # One line per target: name <TAB> kind <TAB> host <TAB> dataset-or-dir,
+  # host `-` when local (an empty field would collapse: tab is IFS whitespace
+  # to `read`). Kind is `zfs` (newest snapshot's creation) or `dup` (newest
+  # duplicity manifest's mtime).
   targetsFile = pkgs.writeText "offsite-targets.tsv" (
     lib.concatMapStrings (
-      t: "${t.name}\t${if t.host == "" then "-" else t.host}\t${t.dataset}\n"
+      t: "${t.name}\t${t.kind}\t${if t.host == "" then "-" else t.host}\t${t.dataset}\n"
     ) targets
   );
 
@@ -137,9 +154,17 @@ let
           "''${OFFSITE_SSH_HOST:-$host}" "$@"
       }
 
+      # Epoch seconds of the newest thing that landed, or nothing if none.
       newest() {
-        local cmd=(zfs list -H -p -t snapshot -o creation -s creation -d 1 "$2")
-        if [ "$1" != - ]; then remote "$1" "''${cmd[*]}"; else "''${cmd[@]}"; fi
+        local kind=$1 host=$2 path=$3
+        if [ "$kind" = dup ]; then
+          # find exits non-zero on a missing or unreadable directory: ERROR.
+          remote "$host" "find $(printf %q "$path") -maxdepth 1 -name 'duplicity-*.manifest.gpg' -printf '%T@\\n'" \
+            | sort -n | tail -n 1 | cut -d. -f1
+          return "''${PIPESTATUS[0]}"
+        fi
+        local cmd=(zfs list -H -p -t snapshot -o creation -s creation -d 1 "$path")
+        if [ "$host" != - ]; then remote "$host" "''${cmd[*]}"; else "''${cmd[@]}"; fi
       }
 
       fmt_age() { printf '%dd %02dh' $(($1 / 86400)) $(($1 % 86400 / 3600)); }
@@ -147,12 +172,12 @@ let
       problems=0
       worst=-1
       worst_name=
-      table=$(printf '%-12s %-45s %-17s %-9s %s' TARGET DATASET NEWEST AGE STATUS)
+      table=$(printf '%-12s %-48s %-17s %-9s %s' TARGET WHERE NEWEST AGE STATUS)
 
-      while IFS=$'\t' read -r name host dataset; do
+      while IFS=$'\t' read -r name kind host dataset; do
         where=$dataset
         [ "$host" != - ] && where="''${host#*@}:$dataset"
-        if ! out=$(newest "$host" "$dataset" 2>&1); then
+        if ! out=$(newest "$kind" "$host" "$dataset" 2>&1); then
           status="ERROR: $(printf '%s' "$out" | tr '\n' ' ' | cut -c1-120)"
           newest_s=- age_s=-
           problems=$((problems + 1))
@@ -160,7 +185,7 @@ let
         else
           created=$(printf '%s\n' "$out" | tail -n 1)
           if [ -z "$created" ]; then
-            status="STALE: no snapshots"
+            if [ "$kind" = dup ]; then status="STALE: no manifests"; else status="STALE: no snapshots"; fi
             newest_s=- age_s=-
             problems=$((problems + 1))
             worst=-2 worst_name=$name
@@ -179,7 +204,7 @@ let
             fi
           fi
         fi
-        table+=$'\n'$(printf '%-12s %-45s %-17s %-9s %s' "$name" "$where" "$newest_s" "$age_s" "$status")
+        table+=$'\n'$(printf '%-12s %-48s %-17s %-9s %s' "$name" "$where" "$newest_s" "$age_s" "$status")
       done < ${targetsFile}
 
       pools=
@@ -289,43 +314,59 @@ let
 
 in
 {
-  systemd.timers.offsite-staleness = {
-    wantedBy = [ "timers.target" ];
-    timerConfig = {
-      OnCalendar = "*-*-* 09:00:00";
-      Persistent = true;
+  # Filled by duplicity.nix: archives judged by their newest manifest on r2d2.
+  options.gir.offsite.duplicityTargets = lib.mkOption {
+    description = "Duplicity archives the offsite staleness alarm watches, by name: the ssh `user@host` and the archive directory on it.";
+    default = { };
+    type = lib.types.attrsOf (
+      lib.types.submodule {
+        options = {
+          host = lib.mkOption { type = lib.types.str; };
+          dir = lib.mkOption { type = lib.types.str; };
+        };
+      }
+    );
+  };
+
+  config = {
+    systemd.timers.offsite-staleness = {
+      wantedBy = [ "timers.target" ];
+      timerConfig = {
+        OnCalendar = "*-*-* 09:00:00";
+        Persistent = true;
+      };
     };
-  };
 
-  systemd.timers.offsite-freshness-heartbeat = {
-    wantedBy = [ "timers.target" ];
-    timerConfig = {
-      OnCalendar = "Mon *-*-* 07:30:00";
-      Persistent = true;
+    systemd.timers.offsite-freshness-heartbeat = {
+      wantedBy = [ "timers.target" ];
+      timerConfig = {
+        OnCalendar = "Mon *-*-* 07:30:00";
+        Persistent = true;
+      };
     };
+
+    # Decision 7: every syncoid-* unit mails as soon as it fails. The names are
+    # the module's: "syncoid-" + escapeUnitName of the commands attribute,
+    # which is the identity for our names (asserted below).
+    systemd.services = lib.mapAttrs' (
+      name: _:
+      lib.nameValuePair "syncoid-${name}" { onFailure = [ "notify-failure@%n.service" ]; }
+    ) config.services.syncoid.commands // {
+      "notify-failure@" = notifyFailure;
+      offsite-staleness = checkService "alarm" "Offsite staleness alarm: mail if any r2d2 copy is over ${toString staleHours} h old";
+      offsite-freshness-heartbeat = checkService "heartbeat" "Offsite freshness heartbeat: weekly table of every offsite copy's age";
+    };
+
+    # On PATH for manual and forced-stale runs (header).
+    environment.systemPackages = [ offsiteCheck ];
+
+    assertions = [
+      {
+        assertion = lib.all (n: builtins.match "[a-zA-Z0-9_.-]+" n != null) (
+          lib.attrNames config.services.syncoid.commands
+        );
+        message = "offsite-alarm.nix: a syncoid command name needs unit-name escaping; the OnFailure= wiring assumes it does not.";
+      }
+    ];
   };
-
-  # Decision 7: every syncoid-* unit mails as soon as it fails. The names are
-  # the module's: "syncoid-" + escapeUnitName of the commands attribute,
-  # which is the identity for our names (asserted below).
-  systemd.services = lib.mapAttrs' (
-    name: _:
-    lib.nameValuePair "syncoid-${name}" { onFailure = [ "notify-failure@%n.service" ]; }
-  ) config.services.syncoid.commands // {
-    "notify-failure@" = notifyFailure;
-    offsite-staleness = checkService "alarm" "Offsite staleness alarm: mail if any r2d2 copy is over ${toString staleHours} h old";
-    offsite-freshness-heartbeat = checkService "heartbeat" "Offsite freshness heartbeat: weekly table of every offsite copy's age";
-  };
-
-  # On PATH for manual and forced-stale runs (header).
-  environment.systemPackages = [ offsiteCheck ];
-
-  assertions = [
-    {
-      assertion = lib.all (n: builtins.match "[a-zA-Z0-9_.-]+" n != null) (
-        lib.attrNames config.services.syncoid.commands
-      );
-      message = "offsite-alarm.nix: a syncoid command name needs unit-name escaping; the OnFailure= wiring assumes it does not.";
-    }
-  ];
 }

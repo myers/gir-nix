@@ -7,8 +7,9 @@
 # Two archives, each a root oneshot on its own timer:
 #
 #   duplicity-lh            /stuff/pr0n/local-homemade -> r2d2 /mmm/backups/gir/lh
-#                           The 2017 chain, carried on: incremental only,
-#                           encrypted to D65ECDFD. Was the last line of
+#                           Weekly full, daily incrementals, keep 3 fulls,
+#                           encrypted to D65ECDFD. Replaced the 2017
+#                           incremental-only chain on 2026-10-10 (5cdf4a7). Was the last line of
 #                           myers' ~/.local/bin/remotebackup cron until the
 #                           NixOS cutover dropped the crontab (last increment
 #                           20260920T040818Z).
@@ -97,7 +98,7 @@ let
   '';
 
   ##########################################################################
-  ## lh: the 2017 chain, incremental only.
+  ## lh: weekly full, daily incrementals, keep 3 fulls (was the 2017 chain).
   ##########################################################################
   lhScript = pkgs.writeShellApplication {
     name = "duplicity-lh";
@@ -107,23 +108,32 @@ let
       PASSPHRASE=$(cat "$CREDENTIALS_DIRECTORY/passphrase")
       export PASSPHRASE
 
-      # `incremental`, not the implied action: if the cache has lost the
-      # chain, this fails instead of starting a new full of the whole tree.
-      # Whether to start a fresh full is ticket verify-duplicity-lh-chain
-      # (5cdf4a7), not this unit's call.
+      # Weekly full, daily incrementals, keep 3 fulls: the host-secrets
+      # shape, replacing the 2017 incremental-only chain (ticket
+      # verify-duplicity-lh-chain, 5cdf4a7: fresh full chosen over verifying
+      # nine years of increments). The 2017 chain is older than 7D, so the
+      # next run starts the new full; the old chain stays on r2d2 until three
+      # newer fulls exist, then remove-all-but-n-full drops it.
       #
-      # --allow-source-mismatch, as the cron had it: gir has been rebuilt
-      # under this chain before. The 2017 full records Hostname
-      # gir.motherbrain.local, the increments since record gir, and the NixOS
-      # rebuild is the newest host change. Without the flag duplicity refuses
-      # a chain whose recorded host differs from this one.
-      duplicity incremental \
+      # --allow-source-mismatch, as the cron had it: the old chain records
+      # Hostname gir.motherbrain.local and gir since, and the NixOS rebuild is
+      # the newest host change. Without the flag duplicity refuses a chain
+      # whose recorded host differs from this one.
+
+      duplicity backup \
         --name lh \
         ${lib.escapeShellArgs commonArgs} \
         --encrypt-key ${lhKey} \
+        --full-if-older-than 7D \
         --allow-source-mismatch \
         /stuff/pr0n/local-homemade \
         ${url "lh"}
+
+      duplicity remove-all-but-n-full \
+        --name lh \
+        ${lib.escapeShellArgs commonArgs} \
+        --force \
+        3 ${url "lh"}
     '';
   };
 
@@ -208,8 +218,13 @@ let
       # leaving it to probe the agent for one.
       export PASSPHRASE=
 
+      # --no-check-remote: an incremental otherwise fetches and decrypts the
+      # last remote manifest to compare it with the cache, which needs the
+      # private key gir doesn't have (failed 2026-10-09 and 10-10 with "No
+      # secret key"). The local cache is the source of truth, as above.
       duplicity backup \
         --name host-secrets \
+        --no-check-remote \
         ${lib.escapeShellArgs commonArgs} \
         --encrypt-key ${hostSecretsKey} \
         --full-if-older-than 7D \
@@ -218,6 +233,7 @@ let
 
       duplicity remove-all-but-n-full \
         --name host-secrets \
+        --no-check-remote \
         ${lib.escapeShellArgs commonArgs} \
         --force \
         3 ${url "host-secrets"}

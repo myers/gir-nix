@@ -33,6 +33,7 @@
     ../../modules/sysstat.nix
     ../../modules/locate.nix
     ../../modules/postfix.nix
+    ../../modules/docker.nix
   ];
 
   networking.hostName = "gir";

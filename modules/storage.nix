@@ -114,6 +114,13 @@ in
       fsType = "zfs";
       options = zfsOpts;
     };
+    # Docker's data-root (modules/docker.nix, 2026-10-12): a plain dataset under
+    # overlay2. Create it before the first switch; it is regenerable test state.
+    "/srv/docker" = {
+      device = "rpool/srv/docker";
+      fsType = "zfs";
+      options = zfsOpts;
+    };
     "/srv/vaultwarden" = {
       device = "rpool/srv/vaultwarden";
       fsType = "zfs";

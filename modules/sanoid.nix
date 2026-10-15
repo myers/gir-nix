@@ -82,8 +82,6 @@ in
       ## Pre-existing Ubuntu entries, carried unchanged.
       ########################################################################
       "bank10/srv/gitea".use_template = production;
-      # Parked rust-luanti evidence archives (37 GB, from the 10-10 history rewrite).
-      "bank10/srv/rust-luanti-archives".use_template = production;
       "bank10/vital".use_template = production;
       "bank7/music".use_template = production;
 

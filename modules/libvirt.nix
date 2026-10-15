@@ -630,10 +630,17 @@ in
     # /etc/default/libvirt-guests on Ubuntu sets exactly these two and leaves
     # ON_BOOT/ON_SHUTDOWN at the script defaults (start / suspend). nixpkgs'
     # defaults differ (0 and 300), so both are carried. See TODO(managedsave).
+    #
+    # onShutdown is "shutdown", NOT Ubuntu's effective "suspend": on 2026-10-15
+    # 12:41 the managedsave of coding-hive died mid-write ("Cannot write data:
+    # Broken pipe" at ~12 GiB of a ~25 GiB guest) while libvirt-guests still
+    # logged "done", leaving a truncated .save that failed to restore at boot
+    # (iohelper SIGPIPE) and took coding-hive-net.service down with it. A clean
+    # ACPI shutdown cannot leave a half-written state file.
     parallelShutdown = 10;
     shutdownTimeout = 120;
     onBoot = "start";
-    onShutdown = "suspend";
+    onShutdown = "shutdown";
   };
 
   # `<interface type='direct' ...>` needs macvtap, and virtio-net with vhost
@@ -1037,14 +1044,14 @@ in
   ##   group, which users.nix already puts myers in. Same reachability, better
   ##   default -- but it is a real behavioural delta, recorded here.
   ##
-  ## TODO(managedsave) -- onShutdown = "suspend" is Ubuntu's effective setting and
-  ##   is carried unchanged, but it means a host shutdown managedsaves coding-hive:
-  ##   up to 64 GiB written into /var/lib/libvirt/qemu/save on rpool before the
-  ##   host can power off. Ticket 05's NUT note already flags that
-  ##   `override.battery.runtime.low = 300` assumes ZFS root + k3s + libvirt stop
-  ##   inside five minutes and has never been measured. Measure it with the soak
-  ##   quiet; if it does not fit, `onShutdown = "shutdown"` (parallelShutdown and
-  ##   shutdownTimeout are already set for it) is the change.
+  ## NOTE(managedsave) -- onShutdown was "suspend" (Ubuntu's effective setting) and
+  ##   is now "shutdown". 2026-10-15: a host shutdown's managedsave of coding-hive
+  ##   died mid-write ("Cannot write data: Broken pipe"), libvirt-guests logged
+  ##   "done" regardless, and the truncated .save failed to restore at boot,
+  ##   failing coding-hive-net.service. The cause of the broken pipe was never
+  ##   found. Cost of the change: guest RAM state is not kept across host reboots.
+  ##   If a truncated save ever needs clearing:
+  ##       sudo virsh managedsave-remove coding-hive
   ##
   ## TODO(nix-ld) -- not this module's option, but this module's failure if it is
   ##   missing: ExecStart is /home/myers/p/coding-hive/bin/inv, a binstub into a

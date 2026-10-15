@@ -851,12 +851,17 @@ in
     # domstate said "shut off", `virsh start` then hit "Domain is already active"
     # and the unit failed with the port forwards unapplied (2026-09-30 22:28).
     # tasks.py now tolerates that too; this just stops the race from happening.
-    after = [ "libvirtd.service" "libvirt-guests.service" ];
+    after = [ "libvirtd.service" "libvirt-guests.service" "network-online.target" ];
 
     # Verbatim from the Ubuntu unit: the VM's macvtap LAN NIC hangs off the
     # physical eno1, and libvirt cannot create the macvtap device before that NIC
     # exists. vm.boot-setup starts the VM itself, so ordering THIS unit after the
     # network is what guarantees the parent NIC is up.
+    #
+    # `wants` alone orders nothing: the port to NixOS carried only the Wants= half
+    # of Ubuntu's Wants=/After= pair. On the 2026-10-15 13:03 boot the unit started
+    # at :45, eno1 got 192.168.42.8 at :49 and network-online was reached at :51, so
+    # _lan_parent_iface() found no NIC in pxe.lan_subnet and skipped the LAN NIC.
     wants = [ "network-online.target" ];
 
     # Ubuntu says `Requires=/After=zfs-mount.service` because tasks.py, bin/inv

@@ -653,6 +653,15 @@ in
     "vhost_net"
   ];
 
+  # Never let the host swap guest RAM out. On 2026-10-16 coding-hive had 4 GB of
+  # its RSS in swap with 30 GB of host RAM free, and two guest threads then sat
+  # in D state for 12 h in kvm_async_pf_task_wait_schedule (a lost "page ready"
+  # wakeup). The guest also runs with `no-kvmapf` (coding-hive tasks.py); this
+  # removes the trigger. memory.swap.max is hierarchical, so every domain scope
+  # under machine.slice inherits it. <memoryBacking><locked/> is not an option:
+  # it pins the pages and defeats the virtio-balloon (64 GiB max, 16 GiB current).
+  systemd.slices.machine.sliceConfig.MemorySwapMax = "0";
+
   ############################################################################
   ## 2. UID/GID parity on the shared dataset
   ##

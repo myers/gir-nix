@@ -4,7 +4,7 @@
   inputs = {
     # nixos-26.05 channel head, 2026-09-14 (ticket 02). Pin the channel branch,
     # not release-26.05, which is not necessarily built.
-    nixpkgs.url = "github:NixOS/nixpkgs/c3eea5b2156db11c7eeeada3dc737711255b253e";
+    nixpkgs.url = "github:NixOS/nixpkgs/1f607aa79b6356ed45d3cd3c8079c196e79efa2c";
     # The only nixpkgs revisions where k3s_1_34 is exactly 1.34.4+k3s1 (ticket 03).
     # Ticket 13: k3s is pinned from this input until a deliberate, separate k3s
     # upgrade after the soak, which also deletes this input.

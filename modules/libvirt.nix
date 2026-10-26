@@ -123,6 +123,12 @@
 }:
 
 let
+  # Master switch for the coding-hive VM at boot. false = not autostarted and
+  # coding-hive-net.service is not wanted by multi-user.target (set 2026-10-26 to
+  # free ~39 GB of RAM on gir). Flip to true and `nixos-rebuild switch` to restore;
+  # `systemctl start coding-hive-net` still brings it up by hand.
+  codingHiveAtBoot = false;
+
   # ---------------------------------------------------------------------------
   # Stable paths. Everything a domain XML points at has to outlive a `nix-collect-
   # garbage`, because the XML is on a ZFS dataset and is not a GC root.
@@ -827,7 +833,7 @@ in
       # coding-hive autostarts, matching /etc/libvirt/qemu/autostart/coding-hive.xml
       # on Ubuntu. coding-hive-net.service starts it too, and is written to cope
       # with either having won -- see `vm_boot_setup` in tasks.py.
-      seed_domain coding-hive ${domCodingHive} yes
+      seed_domain coding-hive ${domCodingHive} ${if codingHiveAtBoot then "yes" else "no"}
 
       # winship-house is the deferred service (ticket 05). Defined, never started.
       seed_domain winship-house ${domWinshipHouse} no
@@ -859,7 +865,7 @@ in
 
   systemd.services.coding-hive-net = {
     description = "Coding Hive VM (autostart + proxy + port forwards)";
-    wantedBy = [ "multi-user.target" ];
+    wantedBy = lib.optional codingHiveAtBoot "multi-user.target";
 
     requires = [ "libvirtd.service" ];
     # libvirt-guests resumes the VM from its managed save on a clean reboot

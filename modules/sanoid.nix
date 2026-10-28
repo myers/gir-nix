@@ -97,7 +97,7 @@ in
 
       # Forgejo (fj): pushed offsite by syncoid.nix, which needs sanoid's
       # snapshots to send. It had none before 2026-10-07.
-      "rpool/srv/forgejo".use_template = production;
+      "bank9/archive/forgejo".use_template = production; # moved from rpool/srv/forgejo 2026-10-28
 
       # r2d2's music, pulled here nightly by syncoid.nix. Prune-only: the
       # snapshots come from r2d2. The first run prunes ~1600 snapshots back to

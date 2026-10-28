@@ -12,9 +12,9 @@
 #   push  bank10/vital          -> r2d2 mmm/backups/gir/vital
 #   push  rpool/srv/postgresql  -> r2d2 mmm/backups/gir/postgresql
 #   push  bank9/archive/forgejo -> r2d2 mmm/backups/gir/forgejo   (moved off the NVMe, unmounted, 2026-10-28)
-#   push  bank10/srv/gitea      -> r2d2 mmm/backups/gir/gt        (new: gt's
+#   push  rpool/srv/gitea       -> r2d2 mmm/backups/gir/gt        (moved to the NVMe 2026-10-28; gt's
 #         repos. Ticket 01 dropped this dataset as dead; gt.monoloco.net has
-#         lived on it since. r2d2's old mmm/backups/gir/gitea stays a 2022
+#         lived on it since (bank10/srv/gitea until the move). r2d2's old mmm/backups/gir/gitea stays a 2022
 #         archive, untouched. gt's database is in postgresql, pushed above.)
 #   pull  r2d2 mmm/music        -> bank7/music/r2d2  (the one pull; 450k cap,
 #         as the cron had it)
@@ -98,7 +98,7 @@ in
       vital = push "bank10/vital" "vital";
       postgresql = push "rpool/srv/postgresql" "postgresql";
       forgejo = push "bank9/archive/forgejo" "forgejo";
-      gt = push "bank10/srv/gitea" "gt";
+      gt = push "rpool/srv/gitea" "gt";
 
       music = {
         source = "${r2d2}:mmm/music";

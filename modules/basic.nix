@@ -50,6 +50,8 @@ in
     wget
     # archives
     unzip
+    # unzip only extracts; this is the Info-ZIP creator (added 2026-10-30)
+    zip
     p7zip
     # hardware and network diagnosis — this host is debugged from the console
     # and over BMC-KVM during crash soaks

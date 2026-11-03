@@ -20,7 +20,7 @@
   services.locate = let dflt = options.services.locate; in {
     enable = true;
     package = pkgs.plocate;
-    # default 02:15 daily; clear of the 00:24 scrub slots and the 04:30 nut job.
+    # default 02:15 daily; clear of the 03:00 scrub slots and the 04:30 nut job.
     # Setting a list option replaces its default; append to it instead.
     pruneFS = dflt.pruneFS.default ++ [ "overlay" "nsfs" ];
     prunePaths = dflt.prunePaths.default ++ [

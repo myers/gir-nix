@@ -118,6 +118,14 @@ in
     };
   };
 
+  # The module wraps each run in `zfs allow` (ExecStartPre) and `zfs unallow`
+  # (ExecStopPost). Behind a running scrub those pool writes stall; on 2026-11-01
+  # unallow outlived the default stop timeout, the unit failed (the push itself had
+  # succeeded) and notify-failure@ mailed. Allow a slow unallow to finish.
+  systemd.services = lib.genAttrs
+    (map (n: "syncoid-${n}") (lib.attrNames config.services.syncoid.commands))
+    (_: { serviceConfig.TimeoutStopSec = "30min"; });
+
   # Ticket 02 decision 3: every local syncoid source is a sanoid dataset on
   # the `production` template (else its snapshots freeze and the push stalls
   # silently), and every local target has a sanoid entry (else nothing prunes

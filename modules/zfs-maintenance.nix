@@ -47,17 +47,23 @@ let
     '';
   };
 
+  # Scrubs start at 03:00, AFTER the 01:30 syncoid pushes (syncoid.nix). Each push
+  # brackets itself with `zfs allow`/`zfs unallow`, which write pool metadata; behind a
+  # scrub's I/O on the HDD pools they stall for minutes. At 00:24 the scrub started 66
+  # minutes ahead of the push and syncoid-vital failed its ExecStopPost on 2026-11-01.
+  # A multi-day scrub still overlaps the next night's push, hence TimeoutStopSec there.
+
   # week: which Sunday of the month. systemd calendar syntax expresses "the Nth Sunday"
   # as a day-of-month range plus Sun, which is the same trick the cron file used.
   slots = {
     # 1st Sunday: bank10, 111T raidz3, about 45 h
-    bank10 = { when = "Sun *-*-01..07 00:24:00"; pools = [ "bank10" ]; };
+    bank10 = { when = "Sun *-*-01..07 03:00:00"; pools = [ "bank10" ]; };
     # 2nd Sunday: bank9, 59T raidz3, about 18 h
-    bank9 = { when = "Sun *-*-08..14 00:24:00"; pools = [ "bank9" ]; };
+    bank9 = { when = "Sun *-*-08..14 03:00:00"; pools = [ "bank9" ]; };
     # 3rd Sunday: bank7, 28T raidz1, about 22 h
-    bank7 = { when = "Sun *-*-15..21 00:24:00"; pools = [ "bank7" ]; };
+    bank7 = { when = "Sun *-*-15..21 03:00:00"; pools = [ "bank7" ]; };
     # 4th Sunday: the SSD/NVMe pools together — minutes each, negligible load
-    ssd = { when = "Sun *-*-22..28 00:24:00"; pools = [ "rpool" "bpool" "vmpool" ]; };
+    ssd = { when = "Sun *-*-22..28 03:00:00"; pools = [ "rpool" "bpool" "vmpool" ]; };
   };
 
   mkScrubUnits = name: slot: {

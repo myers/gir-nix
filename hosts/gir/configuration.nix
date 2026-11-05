@@ -106,10 +106,11 @@
     options = [ "umask=0077" "nofail" "x-systemd.device-timeout=10s" ];
   };
 
-  # Ticket 13: pinned via the flake's k3s-pin overlay; k3s-guard.nix enforces it.
+  # Pinned to the 1.35 minor (nixpkgs' k3s_1_35); patch bumps ride nixpkgs bumps.
+  # k3s-guard.nix enforces the minor: moving to 1.36 is a deliberate, separate hop.
   services.k3s = {
     enable = true;
-    package = pkgs.k3s_1_34_4;
+    package = pkgs.k3s_1_35;
   };
 
   # Ticket 01 §1.2: Ubuntu ran `k3s server` with ZERO CLI flags -- /etc/rancher/k3s/

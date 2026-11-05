@@ -1,18 +1,17 @@
 # Ticket 13: refuse to build a configuration that would upgrade, re-key or
 # convert gir's live single-node k3s cluster. The upstream module ships none of
 # these checks. Each hazard is from ticket 03.
-{ config, lib, pkgs, nixpkgs-k3s-1344, ... }:
+{ config, lib, ... }:
 
 let
   cfg = config.services.k3s;
-  pinned = nixpkgs-k3s-1344.legacyPackages.${pkgs.stdenv.hostPlatform.system}.k3s_1_34;
 in
 {
   assertions = lib.optionals cfg.enable [
     {
-      # The module default is pkgs.k3s (1.35.7); 26.05's k3s_1_34 is 1.34.10.
-      assertion = cfg.package.version == "1.34.4+k3s1" && cfg.package.outPath == pinned.outPath;
-      message = "k3s-guard: services.k3s.package must be the pinned 1.34.4+k3s1 from nixpkgs dc68ac73 (pkgs.k3s_1_34_4), got ${cfg.package.name}.";
+      # Kubernetes allows one minor hop at a time; patch bumps from nixpkgs are fine.
+      assertion = lib.versions.majorMinor cfg.package.version == "1.35";
+      message = "k3s-guard: services.k3s.package must be a 1.35.x k3s (one minor hop at a time), got ${cfg.package.name}.";
     }
     {
       # On a SQLite (kine) single node this requests an irreversible etcd conversion.

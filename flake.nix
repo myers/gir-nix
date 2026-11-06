@@ -24,8 +24,8 @@
       # Ticket 13: these gate Window B. etcd is skipped on purpose: it exercises
       # clusterInit, which gir must never set.
       checks.${system} = {
-        k3s-single-node = testPkgs.nixosTests.k3s.single-node.k3s_1_35;
-        k3s-configuration = testPkgs.nixosTests.k3s.configuration.k3s_1_35;
+        k3s-single-node = testPkgs.nixosTests.k3s.single-node.k3s_1_36;
+        k3s-configuration = testPkgs.nixosTests.k3s.configuration.k3s_1_36;
       };
     };
 }

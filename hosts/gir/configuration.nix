@@ -106,12 +106,26 @@
     options = [ "umask=0077" "nofail" "x-systemd.device-timeout=10s" ];
   };
 
-  # Pinned to the 1.35 minor (nixpkgs' k3s_1_35); patch bumps ride nixpkgs bumps.
-  # k3s-guard.nix enforces the minor: moving to 1.36 is a deliberate, separate hop.
+  # Pinned to the 1.36 minor (nixpkgs' k3s_1_36); patch bumps ride nixpkgs bumps.
+  # k3s-guard.nix enforces the minor: moving to 1.37 is a deliberate, separate hop.
   services.k3s = {
     enable = true;
-    package = pkgs.k3s_1_35;
+    package = pkgs.k3s_1_36;
   };
+
+  # Kubernetes 1.35 turned on KubeletEnsureSecretPulledImages: a pod must prove it holds
+  # pull credentials for a private image another pod pulled with a secret, even under
+  # IfNotPresent. Drawbar job pods run the controller's private image (setup-shim) with
+  # no pull secret on purpose, and gt refuses anonymous token requests, so every job
+  # failed ErrImagePull after the 1.35 upgrade (2026-11-05). This exempts only the
+  # drawbar image. It matches only from 1.36: 1.35.8 compares the full repo:tag@digest
+  # string against the entry, 1.36 trims tag and digest first (per the fluxing session's
+  # reading of pkg/kubelet/images/pullmanager). Same setting as hedgehog (3958026).
+  # k3s reads kubelet.conf.d at start. JSON is valid YAML, so it fits tmpfiles' one line.
+  systemd.tmpfiles.rules = [
+    "d /var/lib/rancher/k3s/agent/etc/kubelet.conf.d 0755 root root -"
+    ''f+ /var/lib/rancher/k3s/agent/etc/kubelet.conf.d/50-drawbar-image-allowlist.conf 0644 root root - {"apiVersion":"kubelet.config.k8s.io/v1beta1","kind":"KubeletConfiguration","imagePullCredentialsVerificationPolicy":"NeverVerifyAllowlistedImages","preloadedImagesVerificationAllowlist":["gt.monoloco.net/chaos-inc/drawbar"]}''
+  ];
 
   # Ticket 01 §1.2: Ubuntu ran `k3s server` with ZERO CLI flags -- /etc/rancher/k3s/
   # config.yaml (271 B) was the entire configuration surface, and it did not come

@@ -10,8 +10,8 @@ in
   assertions = lib.optionals cfg.enable [
     {
       # Kubernetes allows one minor hop at a time; patch bumps from nixpkgs are fine.
-      assertion = lib.versions.majorMinor cfg.package.version == "1.35";
-      message = "k3s-guard: services.k3s.package must be a 1.35.x k3s (one minor hop at a time), got ${cfg.package.name}.";
+      assertion = lib.versions.majorMinor cfg.package.version == "1.36";
+      message = "k3s-guard: services.k3s.package must be a 1.36.x k3s (one minor hop at a time), got ${cfg.package.name}.";
     }
     {
       # On a SQLite (kine) single node this requests an irreversible etcd conversion.
